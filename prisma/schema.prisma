@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  plan          String         @default("observer")
+  createdAt     DateTime       @default(now())
+  watches       WalletWatch[]
+  notifications Notification[]
+}
+
+model Chain {
+  id           String        @id
+  name         String
+  chainId      Int
+  nativeSymbol String
+  wallets      Wallet[]
+  protocols    Protocol[]
+  contracts    Contract[]
+  transactions Transaction[]
+}
+
+model Protocol {
+  id        String     @id @default(cuid())
+  chainId   String
+  chain     Chain      @relation(fields: [chainId], references: [id])
+  slug      String
+  name      String
+  kind      String
+  contracts Contract[]
+
+  @@unique([chainId, slug])
+}
+
+model Wallet {
+  id           String                @id @default(cuid())
+  chainId      String
+  chain        Chain                 @relation(fields: [chainId], references: [id])
+  address      String
+  ensName      String?
+  label        String?
+  firstSeen    DateTime?
+  lastActive   DateTime?
+  watches      WalletWatch[]
+  sent         Transaction[]         @relation("TxFrom")
+  received     Transaction[]         @relation("TxTo")
+  interactions ContractInteraction[]
+
+  @@unique([chainId, address])
+}
+
+model WalletWatch {
+  id        String                @id @default(cuid())
+  userId    String
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletId  String
+  wallet    Wallet                @relation(fields: [walletId], references: [id])
+  cursor    DateTime?
+  createdAt DateTime              @default(now())
+  alerts    Alert[]
+  channels  NotificationChannel[]
+
+  @@unique([userId, walletId])
+}
+
+model NotificationChannel {
+  id      String      @id @default(cuid())
+  watchId String
+  watch   WalletWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  type    String
+  target  String
+}
+
+model Transaction {
+  id           String          @id @default(cuid())
+  chainId      String
+  chain        Chain           @relation(fields: [chainId], references: [id])
+  hash         String
+  blockNumber  Int
+  timestamp    DateTime
+  fromWalletId String?
+  fromWallet   Wallet?         @relation("TxFrom", fields: [fromWalletId], references: [id])
+  toWalletId   String?
+  toWallet     Wallet?         @relation("TxTo", fields: [toWalletId], references: [id])
+  fromAddress  String
+  toAddress    String
+  asset        String
+  amount       String
+  amountUsd    Float
+  type         String
+  gasEth       String?
+  status       String          @default("success")
+  summary      String
+  transfers    TokenTransfer[]
+
+  @@unique([chainId, hash, asset, fromAddress, toAddress])
+  @@index([fromAddress, timestamp])
+  @@index([toAddress, timestamp])
+}
+
+model TokenTransfer {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tokenAddress  String
+  tokenSymbol   String
+  fromAddress   String
+  toAddress     String
+  amount        String
+  amountUsd     Float
+}
+
+model Contract {
+  id           String                @id @default(cuid())
+  chainId      String
+  chain        Chain                 @relation(fields: [chainId], references: [id])
+  address      String
+  name         String?
+  protocolId   String?
+  protocol     Protocol?             @relation(fields: [protocolId], references: [id])
+  interactions ContractInteraction[]
+
+  @@unique([chainId, address])
+}
+
+model ContractInteraction {
+  id              String   @id @default(cuid())
+  walletId        String
+  wallet          Wallet   @relation(fields: [walletId], references: [id])
+  contractId      String
+  contract        Contract @relation(fields: [contractId], references: [id])
+  transactionHash String
+  method          String?
+  timestamp       DateTime
+
+  @@index([walletId, timestamp])
+}
+
+model Alert {
+  id        String       @id @default(cuid())
+  watchId   String
+  watch     WalletWatch  @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  eventType String
+  asset     String?
+  threshold Float?
+  direction String?
+  enabled   Boolean      @default(true)
+  events    AlertEvent[]
+}
+
+model AlertEvent {
+  id              String         @id @default(cuid())
+  alertId         String
+  alert           Alert          @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  transactionHash String
+  summary         String
+  detail          String
+  amountUsd       Float?
+  timestamp       DateTime
+  createdAt       DateTime       @default(now())
+  notifications   Notification[]
+
+  @@unique([alertId, transactionHash])
+}
+
+model Notification {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertEventId String?
+  alertEvent   AlertEvent? @relation(fields: [alertEventId], references: [id])
+  channel      String
+  target       String
+  status       String
+  payload      String
+  error        String?
+  createdAt    DateTime    @default(now())
+  sentAt       DateTime?
+}

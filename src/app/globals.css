@@ -1,26 +1,156 @@
 @import "tailwindcss";
 
+/*
+  Visual system
+  Quiet, warm, technical. Color is reserved for direction and one brass accent.
+  Radius stays small. Depth comes from rules and type, not shadows.
+*/
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --canvas: #0c0c0b;
+  --panel: #141413;
+  --wash: #1c1b19;
+  --ink: #f3f1ea;
+  --muted: #9c978c;
+  --faint: #6e6a62;
+  --line: #2a2926;
+  --line-strong: #3f3d38;
+  --brass: #c6a15a;
+  --inflow: #3f9d6e;
+  --outflow: #d15b52;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration: 160ms;
+  --duration-slow: 240ms;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --canvas: #ffffff;
+  --panel: #ffffff;
+  --wash: #f6f5f2;
+  --ink: #161513;
+  --muted: #5c5852;
+  --faint: #8a857c;
+  --line: #e6e3db;
+  --line-strong: #cfcabe;
+  --brass: #8a6424;
+  --inflow: #1b7a4b;
+  --outflow: #c23b32;
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-wash: var(--wash);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-brass: var(--brass);
+  --color-inflow: var(--inflow);
+  --color-outflow: var(--outflow);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@utility eyebrow {
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+html {
+  background: var(--canvas);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--brass);
+  color: var(--canvas);
+}
+
+:root[data-theme="light"] ::selection {
+  background: #ead9b4;
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 3px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input::placeholder {
+  color: var(--faint);
+}
+
+summary {
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+@keyframes ring-pulse {
+  0%,
+  100% {
+    stroke-opacity: 0.28;
+  }
+  50% {
+    stroke-opacity: 0.85;
+  }
+}
+
+.ring-pulse {
+  animation: ring-pulse 4.8s var(--ease) infinite;
+}
+
+@keyframes rail-flow {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+.rail-flow {
+  animation: rail-flow 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-pulse,
+  .rail-flow {
+    animation: none;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
 }
