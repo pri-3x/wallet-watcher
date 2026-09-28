@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import type { AlertRule } from "@/lib/alerts/engine";
+import { DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { isPlanId, type PlanId } from "@/lib/plans";
 import type { ActivityEvent } from "@/lib/types";
 import {
@@ -45,6 +46,8 @@ function toWatch(watch: WatchWithRelations): WatchRecord {
     address: watch.wallet.address,
     createdAt: watch.createdAt.getTime(),
     cursor: watch.cursor?.getTime() ?? 0,
+    cooldownMs: watch.cooldownMs ?? DEFAULT_COOLDOWN_MS,
+    lastNotifiedAt: watch.lastNotifiedAt?.getTime() ?? 0,
     rules: watch.alerts.map((alert) => ({
       id: alert.id,
       eventType: alert.eventType as AlertRule["eventType"],
@@ -61,20 +64,29 @@ function toWatch(watch: WatchWithRelations): WatchRecord {
   };
 }
 
+function chainRecord() {
+  if (process.env.ETHEREUM_NETWORK === "sepolia") {
+    return { id: "sepolia", name: "Sepolia", chainId: 11155111, nativeSymbol: "ETH" };
+  }
+  return { id: "ethereum", name: "Ethereum", chainId: 1, nativeSymbol: "ETH" };
+}
+
 async function ensureChain() {
+  const chain = chainRecord();
   await prisma.chain.upsert({
-    where: { id: "ethereum" },
+    where: { id: chain.id },
     update: {},
-    create: { id: "ethereum", name: "Ethereum", chainId: 1, nativeSymbol: "ETH" },
+    create: chain,
   });
+  return chain.id;
 }
 
 async function ensureWallet(address: string) {
-  await ensureChain();
+  const chainId = await ensureChain();
   return prisma.wallet.upsert({
-    where: { chainId_address: { chainId: "ethereum", address } },
+    where: { chainId_address: { chainId, address } },
     update: {},
-    create: { chainId: "ethereum", address },
+    create: { chainId, address },
   });
 }
 
@@ -122,7 +134,7 @@ export const prismaStore: AppStore = {
     return watches.map(toWatch);
   },
 
-  async createWatch({ userId, address, rules, channels }) {
+  async createWatch({ userId, address, rules, channels, cooldownMs }) {
     const wallet = await ensureWallet(address);
     const existing = await prisma.walletWatch.findUnique({
       where: { userId_walletId: { userId, walletId: wallet.id } },
@@ -132,6 +144,7 @@ export const prismaStore: AppStore = {
       data: {
         userId,
         walletId: wallet.id,
+        cooldownMs: cooldownMs ?? DEFAULT_COOLDOWN_MS,
         alerts: {
           create: rules.map((rule) => ({
             eventType: rule.eventType,
@@ -154,8 +167,23 @@ export const prismaStore: AppStore = {
     await prisma.walletWatch.deleteMany({ where: { id: watchId, userId } });
   },
 
+  async setCooldown(userId, watchId, cooldownMs) {
+    const existing = await prisma.walletWatch.findFirst({ where: { id: watchId, userId } });
+    if (!existing) throw new StoreError("That watch isn't on this desk.");
+    const watch = await prisma.walletWatch.update({
+      where: { id: watchId },
+      data: { cooldownMs },
+      include: watchInclude,
+    });
+    return toWatch(watch);
+  },
+
   async updateCursor(watchId, cursor) {
     await prisma.walletWatch.update({ where: { id: watchId }, data: { cursor: new Date(cursor) } });
+  },
+
+  async markNotified(watchId, at) {
+    await prisma.walletWatch.update({ where: { id: watchId }, data: { lastNotifiedAt: new Date(at) } });
   },
 
   async listAlertEvents(userId, limit = 40) {
@@ -269,14 +297,14 @@ export const prismaStore: AppStore = {
 
   async upsertActivity(events) {
     if (events.length === 0) return;
-    await ensureChain();
+    const chainId = await ensureChain();
     for (const event of events) {
       const from = await ensureWallet(event.from.address);
       const to = event.to.address ? await ensureWallet(event.to.address) : null;
       const transaction = await prisma.transaction.upsert({
         where: {
           chainId_hash_asset_fromAddress_toAddress: {
-            chainId: "ethereum",
+            chainId,
             hash: event.hash,
             asset: event.asset,
             fromAddress: event.from.address,
@@ -285,7 +313,7 @@ export const prismaStore: AppStore = {
         },
         update: { amountUsd: event.amountUsd, summary: event.summary },
         create: {
-          chainId: "ethereum",
+          chainId,
           hash: event.hash,
           blockNumber: event.blockNumber,
           timestamp: new Date(event.timestamp),
@@ -319,9 +347,9 @@ export const prismaStore: AppStore = {
       }
       if (event.type === "contract" || event.type === "defi" || event.type === "nft") {
         const contract = await prisma.contract.upsert({
-          where: { chainId_address: { chainId: "ethereum", address: event.to.address } },
+          where: { chainId_address: { chainId, address: event.to.address } },
           update: { name: event.protocol },
-          create: { chainId: "ethereum", address: event.to.address, name: event.protocol },
+          create: { chainId, address: event.to.address, name: event.protocol },
         });
         await prisma.contractInteraction.create({
           data: {

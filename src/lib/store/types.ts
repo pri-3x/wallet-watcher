@@ -30,6 +30,10 @@ export type WatchRecord = {
   address: string;
   createdAt: number;
   cursor: number;
+  /** 0 sends every match. Otherwise the watch stays quiet for this long after a send. */
+  cooldownMs: number;
+  /** Wall-clock time of the last match that was queued for delivery. */
+  lastNotifiedAt: number;
   rules: AlertRule[];
   channels: Array<{ id: string; type: ChannelType; target: string }>;
 };
@@ -93,9 +97,12 @@ export interface AppStore {
     address: string;
     rules: RuleInput[];
     channels: ChannelInput[];
+    cooldownMs?: number;
   }): Promise<WatchRecord>;
   deleteWatch(userId: string, watchId: string): Promise<void>;
+  setCooldown(userId: string, watchId: string, cooldownMs: number): Promise<WatchRecord>;
   updateCursor(watchId: string, cursor: number): Promise<void>;
+  markNotified(watchId: string, at: number): Promise<void>;
   listAlertEvents(userId: string, limit?: number): Promise<StoredAlert[]>;
   insertAlertEvents(events: NewAlertEvent[]): Promise<StoredAlert[]>;
   enqueueNotifications(items: NewNotification[]): Promise<void>;

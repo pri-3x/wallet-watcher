@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import type { AlertRule } from "@/lib/alerts/engine";
+import { DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { isPlanId, type PlanId } from "@/lib/plans";
 import type { ActivityEvent } from "@/lib/types";
 import {
@@ -22,6 +23,8 @@ type WatchRow = {
   address: string;
   createdAt: number;
   cursor: number;
+  cooldownMs?: number;
+  lastNotifiedAt?: number;
 };
 
 type AlertRow = AlertRule & { watchId: string };
@@ -50,8 +53,12 @@ const empty = (): DatabaseFile => ({
 });
 
 const filePath = path.join(process.cwd(), "data", "store.json");
-let queue: Promise<unknown> = Promise.resolve();
-let memory: DatabaseFile | null = null;
+const globalStore = globalThis as unknown as {
+  walletWatchQueue?: Promise<unknown>;
+  walletWatchMemory?: DatabaseFile | null;
+};
+let queue: Promise<unknown> = globalStore.walletWatchQueue ?? Promise.resolve();
+let memory: DatabaseFile | null = globalStore.walletWatchMemory ?? null;
 
 function mutate<T>(fn: (db: DatabaseFile) => Promise<T> | T) {
   const run = queue.then(async () => {
@@ -64,10 +71,15 @@ function mutate<T>(fn: (db: DatabaseFile) => Promise<T> | T) {
     () => undefined,
     () => undefined,
   );
+  globalStore.walletWatchQueue = queue;
   return run;
 }
 
 async function load() {
+  if (globalStore.walletWatchMemory) {
+    memory = globalStore.walletWatchMemory;
+    return memory;
+  }
   if (memory) return memory;
   try {
     const raw = await readFile(filePath, "utf8");
@@ -75,18 +87,26 @@ async function load() {
   } catch {
     memory = empty();
   }
+  globalStore.walletWatchMemory = memory;
   return memory;
 }
 
 async function save(db: DatabaseFile) {
   memory = db;
+  globalStore.walletWatchMemory = db;
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(db));
 }
 
 function assemble(db: DatabaseFile, watch: WatchRow): WatchRecord {
   return {
-    ...watch,
+    id: watch.id,
+    userId: watch.userId,
+    address: watch.address,
+    createdAt: watch.createdAt,
+    cursor: watch.cursor,
+    cooldownMs: watch.cooldownMs ?? DEFAULT_COOLDOWN_MS,
+    lastNotifiedAt: watch.lastNotifiedAt ?? 0,
     rules: db.alerts.filter((alert) => alert.watchId === watch.id),
     channels: db.channels.filter((channel) => channel.watchId === watch.id),
   };
@@ -156,7 +176,7 @@ export const memoryStore: AppStore = {
     return mutate((db) => db.watches.map((watch) => assemble(db, watch)));
   },
 
-  createWatch({ userId, address, rules, channels }) {
+  createWatch({ userId, address, rules, channels, cooldownMs }) {
     return mutate((db) => {
       const duplicate = db.watches.find(
         (watch) => watch.userId === userId && watch.address.toLowerCase() === address.toLowerCase(),
@@ -168,6 +188,8 @@ export const memoryStore: AppStore = {
         address,
         createdAt: Date.now(),
         cursor: 0,
+        cooldownMs: cooldownMs ?? DEFAULT_COOLDOWN_MS,
+        lastNotifiedAt: 0,
       };
       db.watches.push(watch);
       db.alerts.push(...rules.map((rule) => ruleRow(watch.id, rule)));
@@ -192,10 +214,26 @@ export const memoryStore: AppStore = {
     });
   },
 
+  setCooldown(userId, watchId, cooldownMs) {
+    return mutate((db) => {
+      const watch = db.watches.find((item) => item.id === watchId && item.userId === userId);
+      if (!watch) throw new StoreError("That watch isn't on this desk.");
+      watch.cooldownMs = cooldownMs;
+      return assemble(db, watch);
+    });
+  },
+
   updateCursor(watchId, cursor) {
     return mutate((db) => {
       const watch = db.watches.find((item) => item.id === watchId);
       if (watch) watch.cursor = cursor;
+    });
+  },
+
+  markNotified(watchId, at) {
+    return mutate((db) => {
+      const watch = db.watches.find((item) => item.id === watchId);
+      if (watch) watch.lastNotifiedAt = at;
     });
   },
 

@@ -62,8 +62,10 @@ model WalletWatch {
   user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   walletId  String
   wallet    Wallet                @relation(fields: [walletId], references: [id])
-  cursor    DateTime?
-  createdAt DateTime              @default(now())
+  cursor         DateTime?
+  cooldownMs     Int                @default(900000)
+  lastNotifiedAt DateTime?
+  createdAt      DateTime           @default(now())
   alerts    Alert[]
   channels  NotificationChannel[]
 

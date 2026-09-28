@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isAddress } from "@/lib/address";
+import { COOLDOWN_OPTIONS, DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { formatUsd } from "@/lib/format";
 import type { RuleType } from "@/lib/alerts/engine";
 import type { ChannelType } from "@/lib/store/types";
@@ -41,6 +42,7 @@ export function WatchWalletModal({
   const [custom, setCustom] = useState("");
   const [useCustom, setUseCustom] = useState(false);
   const [channels, setChannels] = useState<ChannelType[]>(["email"]);
+  const [cooldownMs, setCooldownMs] = useState(DEFAULT_COOLDOWN_MS);
   const [targets, setTargets] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
   const [signedIn, setSignedIn] = useState(false);
@@ -125,6 +127,7 @@ export function WatchWalletModal({
           direction: "ANY",
         })),
         channels: channels.map((type) => ({ type, target: targets[type] })),
+        cooldownMs,
       }),
     });
     const json = (await response.json()) as { error?: { title?: string; body?: string } };
@@ -294,6 +297,23 @@ export function WatchWalletModal({
                 })}
               </div>
             </fieldset>
+
+            <div className="mt-6">
+              <p className="text-sm text-muted">Quiet period</p>
+              <p className="mt-2 text-sm text-faint">The first match sends at once. Further matches stay on the timeline.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {COOLDOWN_OPTIONS.map((option) => (
+                  <button
+                    key={option.ms}
+                    type="button"
+                    onClick={() => setCooldownMs(option.ms)}
+                    className={`h-9 border px-3 text-xs ${cooldownMs === option.ms ? "border-ink text-ink" : "border-line text-muted"}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {error ? <p className="mt-4 text-sm text-outflow">{error}</p> : null}
 

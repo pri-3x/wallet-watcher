@@ -11,15 +11,18 @@ export function getStore() {
 }
 
 async function choose(): Promise<AppStore> {
-  if (process.env.USE_DATABASE === "true") {
+  const fileStore = process.env.USE_DATABASE === "false" || !process.env.DATABASE_URL;
+  if (!fileStore) {
     try {
       const { prisma, prismaStore } = await import("@/lib/store/prisma-store");
       await prisma.$queryRaw`SELECT 1`;
+      console.log("Store · Postgres");
       return prismaStore;
     } catch (error) {
-      console.error("Database unavailable. Using the local store.", error);
+      console.error("Database unavailable. Using the local file store.", error);
     }
   }
+  console.log("Store · file");
   const { memoryStore } = await import("@/lib/store/memory");
   return memoryStore;
 }

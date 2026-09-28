@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { shortAddress } from "@/lib/address";
+import { COOLDOWN_OPTIONS, cooldownPhrase } from "@/lib/alerts/quiet";
 import { formatUsdCompact } from "@/lib/format";
 import type { WalletView } from "@/lib/types";
 import type { WatchRecord } from "@/lib/store/types";
@@ -22,6 +23,15 @@ export function WalletList({
   async function remove(id: string) {
     await fetch(`/api/watches/${id}`, { method: "DELETE" });
     router.refresh();
+  }
+
+  async function setCooldown(id: string, cooldownMs: number) {
+    const response = await fetch(`/api/watches/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cooldownMs }),
+    });
+    if (response.ok) router.refresh();
   }
   if (wallets.length === 0) {
     return (
@@ -46,7 +56,24 @@ export function WalletList({
               </Link>
               <p className="mt-2 text-sm text-muted">
                 Last activity <RelativeTime timestamp={view.lastActive} now={now} />
+                <span className="text-faint"> · {cooldownPhrase(watch.cooldownMs)}</span>
               </p>
+              {removable ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {COOLDOWN_OPTIONS.map((option) => (
+                    <button
+                      key={option.ms}
+                      type="button"
+                      onClick={() => void setCooldown(watch.id, option.ms)}
+                      className={`h-8 border px-2 text-xs ${
+                        watch.cooldownMs === option.ms ? "border-ink text-ink" : "border-line text-muted"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="text-right">
               <p className="font-mono text-sm">{formatUsdCompact(view.balanceUsd)}</p>

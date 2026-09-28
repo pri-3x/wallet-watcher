@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { isAddress } from "@/lib/address";
+import { COOLDOWN_15_MIN, COOLDOWN_1_HOUR, COOLDOWN_IMMEDIATE, DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { getSessionUser } from "@/lib/auth/session";
 import { indexWatches } from "@/lib/indexer";
 import { canonicalAddress } from "@/lib/parties";
 import { PLANS } from "@/lib/plans";
 import { getStore, StoreError } from "@/lib/store";
+
+const cooldownSchema = z.union([
+  z.literal(COOLDOWN_IMMEDIATE),
+  z.literal(COOLDOWN_15_MIN),
+  z.literal(COOLDOWN_1_HOUR),
+]);
 
 const schema = z.object({
   address: z.string(),
@@ -25,6 +32,7 @@ const schema = z.object({
       }),
     )
     .min(1),
+  cooldownMs: cooldownSchema.optional(),
 });
 
 export async function GET() {
@@ -69,6 +77,7 @@ export async function POST(request: Request) {
       address: canonicalAddress(parsed.data.address),
       rules: parsed.data.rules,
       channels: parsed.data.channels,
+      cooldownMs: parsed.data.cooldownMs ?? DEFAULT_COOLDOWN_MS,
     });
     await indexWatches({ notify: false, userId: user.id });
     return Response.json({ watch });

@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: wallet
       POSTGRES_DB: walletwatch
     ports:
-      - "5432:5432"
+      # Host 5436. Port 5432 is often already taken by another Postgres.
+      - "5436:5432"
     volumes:
       - walletwatch-pg:/var/lib/postgresql/data
   redis:
