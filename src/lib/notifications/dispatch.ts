@@ -1,4 +1,5 @@
 import { shortAddress } from "@/lib/address";
+import { emailHtml, emailSubject, emailText, parseSignal } from "@/lib/notifications/email";
 import { getStore } from "@/lib/store";
 import type { ChannelType, StoredNotification } from "@/lib/store/types";
 
@@ -88,8 +89,9 @@ export async function deliver(note: Pick<StoredNotification, "channel" | "target
       body: JSON.stringify({
         from: fromAddress(),
         to: note.target,
-        subject: "A watched wallet moved",
-        text,
+        subject: emailSubject(parseSignal(note.payload)),
+        text: emailText(parseSignal(note.payload)),
+        html: emailHtml(parseSignal(note.payload)),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

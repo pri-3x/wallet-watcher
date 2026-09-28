@@ -6,6 +6,7 @@ import type { ActivityEvent } from "@/lib/types";
 import {
   StoreError,
   type AppStore,
+  type BillingRecord,
   type ChannelType,
   type NewAlertEvent,
   type StoredAlert,
@@ -36,6 +37,24 @@ function toUser(user: { id: string; email: string; plan: string; createdAt: Date
     email: user.email,
     plan: isPlanId(user.plan) ? user.plan : "observer",
     createdAt: user.createdAt.getTime(),
+  };
+}
+
+const billingSelect = {
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+  subscriptionStatus: true,
+  currentPeriodEnd: true,
+  cancelAtPeriodEnd: true,
+} satisfies Prisma.UserSelect;
+
+function toBilling(row: Prisma.UserGetPayload<{ select: typeof billingSelect }>): BillingRecord {
+  return {
+    customerId: row.stripeCustomerId,
+    subscriptionId: row.stripeSubscriptionId,
+    status: row.subscriptionStatus,
+    periodEnd: row.currentPeriodEnd?.getTime() ?? null,
+    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
   };
 }
 
@@ -114,10 +133,45 @@ export const prismaStore: AppStore = {
     return user ? toUser(user) : null;
   },
 
+  async getPasswordHash(userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+    return user?.passwordHash ?? null;
+  },
+
+  async setPasswordHash(userId, hash) {
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } });
+  },
+
   async setPlan(userId, plan: PlanId) {
     if (!isPlanId(plan)) throw new StoreError("That plan isn't available.");
     const user = await prisma.user.update({ where: { id: userId }, data: { plan } });
     return toUser(user);
+  },
+
+  async getBilling(userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: billingSelect });
+    if (!user) throw new StoreError("We couldn't find that account.");
+    return toBilling(user);
+  },
+
+  async setBilling(userId, billing) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        stripeCustomerId: billing.customerId,
+        stripeSubscriptionId: billing.subscriptionId,
+        subscriptionStatus: billing.status,
+        currentPeriodEnd: billing.periodEnd === undefined ? undefined : billing.periodEnd === null ? null : new Date(billing.periodEnd),
+        cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+      },
+      select: billingSelect,
+    });
+    return toBilling(user);
+  },
+
+  async getUserByCustomerId(customerId) {
+    const user = await prisma.user.findUnique({ where: { stripeCustomerId: customerId } });
+    return user ? toUser(user) : null;
   },
 
   async listWatches(userId) {

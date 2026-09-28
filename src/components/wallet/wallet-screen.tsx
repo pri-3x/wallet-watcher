@@ -113,7 +113,7 @@ export function WalletScreen({
           ))}
           {asset ? <span className="font-mono text-xs text-brass">{asset}</span> : null}
         </div>
-        <div className="mt-4 border-t border-line md:h-[640px]">
+        <div className={`mt-4 border-t border-line ${filtered.length > 0 ? "md:h-[420px]" : ""}`}>
           {view.events.length === 0 ? (
             <div className="pt-10">
               <EmptyState
@@ -131,9 +131,10 @@ export function WalletScreen({
         </div>
       </section>
 
-      {filtered.length > 0 ? <ActivityTimeline events={filtered} now={now} onSelect={setSelected} /> : null}
-
       <BehaviorSection events={filtered} />
+      {filtered.length > 0 ? (
+        <ActivityTimeline key={`${range}:${filter}:${asset}`} events={filtered} now={now} onSelect={setSelected} />
+      ) : null}
       <TransactionDrawer
         event={selected}
         demo={view.source === "demo"}

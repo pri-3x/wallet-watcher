@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Mark } from "@/components/brand/mark";
+import { Wordmark } from "@/components/brand/mark";
 import { ThemeButton } from "@/components/shell/theme-button";
 
 const PRIMARY = [
@@ -23,9 +23,8 @@ export function Sidebar() {
   return (
     <aside className="border-b border-line md:fixed md:inset-y-0 md:w-56 md:border-r md:border-b-0">
       <div className="flex items-center justify-between px-5 py-5">
-        <Link href="/" className="flex items-center gap-2.5 text-sm">
-          <Mark />
-          Wallet Watch
+        <Link href="/">
+          <Wordmark />
         </Link>
         <ThemeButton />
       </div>

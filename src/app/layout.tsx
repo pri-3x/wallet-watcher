@@ -28,7 +28,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    // data-theme is set by the inline script below before hydration, so it differs from the server render on purpose.
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full bg-canvas text-ink">
         <script
           dangerouslySetInnerHTML={{

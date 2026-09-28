@@ -149,7 +149,35 @@ export function layoutActivity(events: ActivityEvent[], focusAddress: string): G
   if (inTaken.cluster) pushEdge(collapse(inTaken.cluster, "in"), true);
   if (outTaken.cluster) pushEdge(collapse(outTaken.cluster, "out"), true);
 
-  return { width: WIDTH, height: HEIGHT, nodes, edges };
+  const frame = fitFrame(nodes);
+  return { width: frame.width, height: frame.height, nodes, edges };
+}
+
+/** Pulls the canvas in around the nodes so a sparse wallet fills the stage. */
+function fitFrame(nodes: GraphNode[]) {
+  const pad = 88;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    const box = nodeBox(node.kind);
+    minX = Math.min(minX, node.x - box.w / 2);
+    maxX = Math.max(maxX, node.x + box.w / 2);
+    minY = Math.min(minY, node.y - box.h / 2);
+    maxY = Math.max(maxY, node.y + box.h / 2);
+  }
+  if (!Number.isFinite(minX)) return { width: WIDTH, height: HEIGHT };
+  const shiftX = pad - minX;
+  const shiftY = pad - minY;
+  for (const node of nodes) {
+    node.x += shiftX;
+    node.y += shiftY;
+  }
+  return {
+    width: Math.ceil(maxX - minX + pad * 2),
+    height: Math.ceil(maxY - minY + pad * 2),
+  };
 }
 
 function edgeLabel(item: Aggregate) {

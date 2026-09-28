@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Mark } from "@/components/brand/mark";
+import { Wordmark } from "@/components/brand/mark";
 import { usePalette } from "@/components/shell/providers";
 import { ThemeButton } from "@/components/shell/theme-button";
 
@@ -11,9 +11,8 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-canvas">
       <div className="mx-auto flex h-14 max-w-[1360px] items-center justify-between px-6 md:px-10">
-        <Link href="/" className="flex items-center gap-2.5 text-sm">
-          <Mark />
-          <span>Wallet Watch</span>
+        <Link href="/">
+          <Wordmark />
         </Link>
         <div className="flex items-center gap-6 text-sm text-muted">
           <ThemeButton />

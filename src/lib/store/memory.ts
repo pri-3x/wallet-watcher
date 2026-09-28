@@ -5,8 +5,10 @@ import { DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { isPlanId, type PlanId } from "@/lib/plans";
 import type { ActivityEvent } from "@/lib/types";
 import {
+  EMPTY_BILLING,
   StoreError,
   type AppStore,
+  type BillingRecord,
   type ChannelInput,
   type ChannelType,
   type NewAlertEvent,
@@ -34,6 +36,9 @@ type MemoryNotification = StoredNotification & { createdAt: number };
 
 type DatabaseFile = {
   users: StoreUser[];
+  /** Kept apart from users so the hash never rides along with the user record. */
+  passwords: Array<{ userId: string; hash: string }>;
+  billing: Array<BillingRecord & { userId: string }>;
   watches: WatchRow[];
   alerts: AlertRow[];
   channels: ChannelRow[];
@@ -44,6 +49,8 @@ type DatabaseFile = {
 
 const empty = (): DatabaseFile => ({
   users: [],
+  passwords: [],
+  billing: [],
   watches: [],
   alerts: [],
   channels: [],
@@ -157,12 +164,55 @@ export const memoryStore: AppStore = {
     return mutate((db) => db.users.find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null);
   },
 
+  getPasswordHash(userId) {
+    return mutate((db) => db.passwords.find((row) => row.userId === userId)?.hash ?? null);
+  },
+
+  setPasswordHash(userId, hash) {
+    return mutate((db) => {
+      const row = db.passwords.find((item) => item.userId === userId);
+      if (row) row.hash = hash;
+      else db.passwords.push({ userId, hash });
+    });
+  },
+
   setPlan(userId, plan: PlanId) {
     return mutate((db) => {
       const user = db.users.find((item) => item.id === userId);
       if (!user || !isPlanId(plan)) throw new StoreError("We couldn't find that account.");
       user.plan = plan;
       return user;
+    });
+  },
+
+  getBilling(userId) {
+    return mutate((db) => {
+      const row = db.billing.find((item) => item.userId === userId);
+      if (!row) return { ...EMPTY_BILLING };
+      const { userId: _userId, ...record } = row;
+      void _userId;
+      return record;
+    });
+  },
+
+  setBilling(userId, billing) {
+    return mutate((db) => {
+      let row = db.billing.find((item) => item.userId === userId);
+      if (!row) {
+        row = { userId, ...EMPTY_BILLING };
+        db.billing.push(row);
+      }
+      Object.assign(row, billing);
+      const { userId: _userId, ...record } = row;
+      void _userId;
+      return record;
+    });
+  },
+
+  getUserByCustomerId(customerId) {
+    return mutate((db) => {
+      const row = db.billing.find((item) => item.customerId === customerId);
+      return row ? (db.users.find((user) => user.id === row.userId) ?? null) : null;
     });
   },
 

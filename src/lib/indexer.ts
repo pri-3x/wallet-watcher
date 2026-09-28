@@ -27,7 +27,7 @@ export type IndexReport = {
 };
 
 export async function indexWatches(
-  options: { notify: boolean; userId?: string } = { notify: true },
+  options: { notify: boolean; userId?: string; stillOwner?: () => Promise<boolean> } = { notify: true },
 ): Promise<IndexReport> {
   const store = await getStore();
   const watches = await store.listAllWatches();
@@ -37,6 +37,11 @@ export async function indexWatches(
   const report: IndexReport = { watches: selected.length, skipped: 0, recorded: 0, queued: 0 };
 
   for (const watch of selected) {
+    if (options.stillOwner && !(await options.stillOwner())) {
+      console.warn("[indexer] Lost the worker lock. Stopping this pass.");
+      break;
+    }
+
     const view = await loadWalletView(watch.address, now);
     if (view.error) {
       report.skipped += 1;
@@ -86,6 +91,12 @@ export async function indexWatches(
     if (view.events.length > 0) await store.upsertActivity(view.events);
   }
 
-  if (options.notify) await dispatchPending();
+  if (options.notify) {
+    if (options.stillOwner && !(await options.stillOwner())) {
+      console.warn("[indexer] Lost the worker lock before sending. Leaving notifications pending.");
+    } else {
+      await dispatchPending();
+    }
+  }
   return report;
 }

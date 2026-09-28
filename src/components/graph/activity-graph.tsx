@@ -23,7 +23,7 @@ export function ActivityGraph({
   interactive?: boolean;
 }) {
   return (
-    <div className={`relative h-full ${interactive ? "md:min-h-[520px]" : ""}`}>
+    <div className="relative h-full">
       <div className="hidden h-full md:block">
         <DesktopGraph model={model} onOpenEdge={onOpenEdge} interactive={interactive} />
       </div>
