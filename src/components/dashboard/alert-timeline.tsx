@@ -38,6 +38,7 @@ function deliveryLabel(status: string) {
   if (status === "delivered") return "Delivered";
   if (status === "logged") return "Logged";
   if (status === "failed") return "Failed";
+  if (status === "retry") return "Retrying";
   if (status === "pending" || status === "sending") return "Queued";
   return status;
 }

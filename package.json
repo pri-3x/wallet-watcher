@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/alerts/engine.test.ts",
+    "test": "node --import tsx --test src/lib/alerts/engine.test.ts src/lib/notifications/retry.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "worker": "tsx src/workers/run.ts"

@@ -178,9 +178,11 @@ model Notification {
   alertEvent   AlertEvent? @relation(fields: [alertEventId], references: [id])
   channel      String
   target       String
-  status       String
-  payload      String
-  error        String?
-  createdAt    DateTime    @default(now())
-  sentAt       DateTime?
+  status        String
+  payload       String
+  error         String?
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime?
+  createdAt     DateTime    @default(now())
+  sentAt        DateTime?
 }

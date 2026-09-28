@@ -3,6 +3,13 @@ import { getStore } from "@/lib/store";
 import type { ChannelType, StoredNotification } from "@/lib/store/types";
 
 const TIMEOUT_MS = 8000;
+export const MAX_DELIVERY_ATTEMPTS = 3;
+const BACKOFF_MS = [30_000, 120_000];
+
+/** Wait after a failed attempt before it is eligible again. Attempt 1 waits 30s, attempt 2 waits 2 minutes. */
+export function retryDelay(attempt: number) {
+  return BACKOFF_MS[Math.max(0, Math.min(attempt, BACKOFF_MS.length) - 1)] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
+}
 
 export type ProviderState = {
   channel: ChannelType;
@@ -18,7 +25,11 @@ export function providerStates(): ProviderState[] {
       channel: "email",
       label: "Email",
       ready: Boolean(process.env.RESEND_API_KEY),
-      note: process.env.RESEND_API_KEY ? `Sends from ${fromAddress()}` : "Set RESEND_API_KEY to send email.",
+      note: process.env.RESEND_API_KEY
+        ? process.env.EMAIL_FROM
+          ? `Sends from ${fromAddress()}`
+          : "Test sender. Delivers only to your Resend account email until a domain is verified."
+        : "Set RESEND_API_KEY to send email.",
     },
     {
       channel: "telegram",
@@ -43,7 +54,16 @@ export async function dispatchPending() {
       if (message === "UNCONFIGURED") {
         await store.markNotification(note.id, "logged", "No delivery provider configured.");
       } else {
-        await store.markNotification(note.id, "failed", message.slice(0, 500));
+        const attempts = (note.attempts ?? 0) + 1;
+        const reason = message.slice(0, 500);
+        if (attempts >= MAX_DELIVERY_ATTEMPTS) {
+          await store.markNotification(note.id, "failed", reason, { attempts, nextAttemptAt: Date.now() });
+        } else {
+          await store.markNotification(note.id, "retry", reason, {
+            attempts,
+            nextAttemptAt: Date.now() + retryDelay(attempts),
+          });
+        }
       }
     }
   }
@@ -113,8 +133,13 @@ export function notificationText(address: string, detail: string, link?: string)
   return link ? `${line}\n${link}` : line;
 }
 
+/**
+ * Resend's shared test sender works without a verified domain, but only
+ * delivers to the account owner's own address. Set EMAIL_FROM to an address on
+ * a verified domain to email anyone.
+ */
 function fromAddress() {
-  return process.env.EMAIL_FROM || "Wallet Watch <alerts@walletwatch.dev>";
+  return process.env.EMAIL_FROM || "Wallet Watch <onboarding@resend.dev>";
 }
 
 function isHttpUrl(value: string) {

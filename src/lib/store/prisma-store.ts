@@ -237,7 +237,12 @@ export const prismaStore: AppStore = {
 
   async claimPendingNotifications(limit) {
     const pending = await prisma.notification.findMany({
-      where: { status: "pending" },
+      where: {
+        OR: [
+          { status: "pending" },
+          { status: "retry", nextAttemptAt: { lte: new Date() } },
+        ],
+      },
       take: limit,
       orderBy: { createdAt: "asc" },
     });
@@ -249,10 +254,16 @@ export const prismaStore: AppStore = {
     return pending.map(toNotification);
   },
 
-  async markNotification(id, status, error) {
+  async markNotification(id, status, error, retry) {
     await prisma.notification.update({
       where: { id },
-      data: { status, error, sentAt: status === "delivered" || status === "logged" ? new Date() : null },
+      data: {
+        status,
+        error,
+        sentAt: status === "delivered" || status === "logged" ? new Date() : null,
+        attempts: retry?.attempts,
+        nextAttemptAt: retry ? new Date(retry.nextAttemptAt) : undefined,
+      },
     });
   },
 
@@ -354,6 +365,8 @@ function toNotification(note: {
   status: string;
   payload: string;
   error: string | null;
+  attempts: number;
+  nextAttemptAt: Date | null;
 }): StoredNotification {
   return {
     id: note.id,
@@ -364,5 +377,7 @@ function toNotification(note: {
     status: note.status,
     payload: note.payload,
     error: note.error ?? undefined,
+    attempts: note.attempts,
+    nextAttemptAt: note.nextAttemptAt?.getTime(),
   };
 }

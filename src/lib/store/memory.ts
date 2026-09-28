@@ -241,6 +241,7 @@ export const memoryStore: AppStore = {
           error: item.error,
           id: crypto.randomUUID(),
           status: item.status ?? "pending",
+          attempts: 0,
           createdAt: Date.now(),
         });
       }
@@ -249,18 +250,29 @@ export const memoryStore: AppStore = {
 
   claimPendingNotifications(limit) {
     return mutate((db) => {
-      const pending = db.notifications.filter((note) => note.status === "pending").slice(0, limit);
+      const now = Date.now();
+      const pending = db.notifications
+        .filter(
+          (note) =>
+            note.status === "pending" ||
+            (note.status === "retry" && (note.nextAttemptAt ?? 0) <= now),
+        )
+        .slice(0, limit);
       for (const note of pending) note.status = "sending";
       return pending.map((note) => ({ ...note }));
     });
   },
 
-  markNotification(id, status, error) {
+  markNotification(id, status, error, retry) {
     return mutate((db) => {
       const note = db.notifications.find((item) => item.id === id);
       if (!note) return;
       note.status = status;
       note.error = error;
+      if (retry) {
+        note.attempts = retry.attempts;
+        note.nextAttemptAt = retry.nextAttemptAt;
+      }
     });
   },
 

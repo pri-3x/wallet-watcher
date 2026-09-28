@@ -66,6 +66,8 @@ export type StoredNotification = {
   status: string;
   payload: string;
   error?: string;
+  attempts?: number;
+  nextAttemptAt?: number;
 };
 
 export type NewNotification = {
@@ -98,7 +100,12 @@ export interface AppStore {
   insertAlertEvents(events: NewAlertEvent[]): Promise<StoredAlert[]>;
   enqueueNotifications(items: NewNotification[]): Promise<void>;
   claimPendingNotifications(limit: number): Promise<StoredNotification[]>;
-  markNotification(id: string, status: string, error?: string): Promise<void>;
+  markNotification(
+    id: string,
+    status: string,
+    error?: string,
+    retry?: { attempts: number; nextAttemptAt: number },
+  ): Promise<void>;
   upsertActivity(events: ActivityEvent[]): Promise<void>;
   listActivity(): Promise<ActivityEvent[]>;
 }
