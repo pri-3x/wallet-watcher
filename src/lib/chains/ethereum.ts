@@ -1,7 +1,13 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { isAddress, shortAddress } from "@/lib/address";
+import { defaultChainId, findChain, historyUrl, rpcUrl, type ChainDef } from "@/lib/chains/catalog";
+import { ChainError } from "@/lib/chains/error";
+import { loadSolanaWallet } from "@/lib/chains/solana";
 import { formatAmount } from "@/lib/format";
-import { ETH_USD, KNOWN_PROTOCOLS, partyFor } from "@/lib/parties";
+import { KNOWN_PROTOCOLS, partyFor } from "@/lib/parties";
 import type { ActivityEvent, ActivityType, Party, WalletView } from "@/lib/types";
+
+export { ChainError };
 
 export type Balance = {
   address: string;
@@ -38,46 +44,46 @@ export interface ChainAdapter {
   subscribeToAddress(address: string): Promise<void>;
 }
 
-export class ChainError extends Error {
-  readonly technical?: string;
-
-  constructor(message: string, technical?: string) {
-    super(message);
-    this.name = "ChainError";
-    this.technical = technical;
-  }
-}
-
 const STABLES = new Set(["USDC", "USDT", "DAI", "USDS", "USDE"]);
-const SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 
 type Network = {
-  id: "mainnet" | "sepolia";
+  id: string;
   label: string;
   rpc: string | null;
   explorer: string;
   history: string | null;
+  nativeSymbol: string;
+  wrappedSymbol: string;
+  priceId: string;
+  fallbackPrice: number;
+  numericId: number;
 };
 
-export function activeNetwork(): Network {
-  if (process.env.ETHEREUM_NETWORK === "sepolia") {
-    return {
-      id: "sepolia",
-      label: "Sepolia",
-      rpc: process.env.ETHEREUM_RPC_URL || SEPOLIA_RPC,
-      explorer: "https://sepolia.etherscan.io",
-      history: process.env.ETHERSCAN_API_KEY
-        ? "https://api-sepolia.etherscan.io/api"
-        : "https://eth-sepolia.blockscout.com/api",
-    };
-  }
+const currentChain = new AsyncLocalStorage<Network>();
+
+function networkFor(chain: ChainDef): Network {
   return {
-    id: "mainnet",
-    label: "Ethereum",
-    rpc: process.env.ETHEREUM_RPC_URL || null,
-    explorer: "https://etherscan.io",
-    history: process.env.ETHERSCAN_API_KEY ? "https://api.etherscan.io/api" : null,
+    id: chain.id,
+    label: chain.name,
+    rpc: rpcUrl(chain),
+    explorer: chain.explorer,
+    history: historyUrl(chain),
+    nativeSymbol: chain.nativeSymbol,
+    wrappedSymbol: chain.wrappedSymbol,
+    priceId: chain.priceId,
+    fallbackPrice: chain.fallbackPrice,
+    numericId: chain.chainId,
   };
+}
+
+export function activeNetwork(): Network {
+  return currentChain.getStore() ?? networkFor(findChain(defaultChainId())!);
+}
+
+function runOnChain<T>(chainId: string, fn: () => Promise<T>) {
+  const chain = findChain(chainId);
+  if (!chain) return Promise.reject(new ChainError("That chain isn't available.", chainId));
+  return currentChain.run(networkFor(chain), fn);
 }
 
 type RpcTx = {
@@ -170,19 +176,36 @@ export const ethereum: ChainAdapter = {
   },
 };
 
-export function getChainAdapter(chain = "ethereum"): ChainAdapter {
-  if (chain !== "ethereum") {
-    throw new ChainError("That chain isn't available yet.", chain);
+export function getChainAdapter(chain = defaultChainId()): ChainAdapter {
+  const def = findChain(chain);
+  if (!def || def.family !== "evm") {
+    throw new ChainError("That chain isn't available on this adapter.", chain);
   }
-  return ethereum;
+  return {
+    id: def.id,
+    name: def.name,
+    getWalletBalance: (address) => runOnChain(def.id, () => ethereum.getWalletBalance(address)),
+    getTransactions: (address) => runOnChain(def.id, () => ethereum.getTransactions(address)),
+    getTokenTransfers: (address) => runOnChain(def.id, () => ethereum.getTokenTransfers(address)),
+    getBlock: (number) => runOnChain(def.id, () => ethereum.getBlock(number)),
+    subscribeToAddress: (address) => runOnChain(def.id, () => ethereum.subscribeToAddress(address)),
+  };
 }
 
-export function hasChainProvider() {
-  const network = activeNetwork();
-  return Boolean(network.rpc || network.history);
+export function hasChainProvider(chainId = defaultChainId()) {
+  const chain = findChain(chainId);
+  if (!chain) return false;
+  return Boolean(rpcUrl(chain) || historyUrl(chain));
 }
 
-export async function loadLiveWallet(address: string): Promise<WalletView> {
+export async function loadLiveWallet(address: string, chainId = defaultChainId()): Promise<WalletView> {
+  const chain = findChain(chainId);
+  if (!chain) throw new ChainError("That chain isn't available.", chainId);
+  if (chain.family === "solana") return loadSolanaWallet(address, chain);
+  return runOnChain(chain.id, () => loadEvmWallet(address));
+}
+
+async function loadEvmWallet(address: string): Promise<WalletView> {
   const network = activeNetwork();
   try {
     const balance = network.rpc
@@ -201,15 +224,16 @@ export async function loadLiveWallet(address: string): Promise<WalletView> {
     ].filter((note): note is string => Boolean(note));
     return {
       address,
-      chain: "ethereum",
+      chain: network.id,
       chainLabel: network.label,
       explorer: network.explorer,
+      nativeSymbol: network.nativeSymbol,
       ensName: null,
       source: "live",
       balanceUsd: Math.round(balance.usd),
       balanceEth: balance.eth,
       holdings:
-        balance.eth === "—" ? [] : [{ symbol: "ETH", amount: balance.eth, usd: Math.round(balance.usd) }],
+        balance.eth === "—" ? [] : [{ symbol: network.nativeSymbol, amount: balance.eth, usd: Math.round(balance.usd) }],
       txCount: Number.isFinite(txCount) && txCount > 0 ? txCount : ordered.length,
       firstSeen: ordered.at(-1)?.timestamp ?? Date.now(),
       lastActive: ordered[0]?.timestamp ?? Date.now(),
@@ -260,6 +284,7 @@ async function etherscan(address: string, action: string): Promise<RpcTx[]> {
   url.searchParams.set("page", "1");
   url.searchParams.set("offset", "40");
   url.searchParams.set("sort", "desc");
+  if (url.hostname === "api.etherscan.io") url.searchParams.set("chainid", String(network.numericId));
   if (process.env.ETHERSCAN_API_KEY) url.searchParams.set("apikey", process.env.ETHERSCAN_API_KEY);
   const response = await fetch(url, {
     headers: { "user-agent": "wallet-watch" },
@@ -273,7 +298,7 @@ async function etherscan(address: string, action: string): Promise<RpcTx[]> {
   if (!Array.isArray(json.result)) {
     const technical = typeof json.result === "string" ? json.result : json.message;
     if (technical && /rate limit/i.test(technical)) {
-      throw new ChainError("Ethereum is busy right now.", technical);
+      throw new ChainError(`${network.label} is busy right now.`, technical);
     }
     return [];
   }
@@ -389,7 +414,18 @@ function normalizeActivity(
     events.push(...fromTokenRows(focus, tx, rows, price, false));
   }
 
-  return events;
+  return uniqueIds(events);
+}
+
+// One transaction can carry two identical transfers of the same token between the
+// same two parties. Keep both, but give the second one its own id.
+function uniqueIds(events: ActivityEvent[]) {
+  const counts = new Map<string, number>();
+  return events.map((event) => {
+    const count = counts.get(event.id) ?? 0;
+    counts.set(event.id, count + 1);
+    return count === 0 ? event : { ...event, id: `${event.id}:${count}` };
+  });
 }
 
 function fromNative(focus: string, tx: RpcTx, price: number): ActivityEvent {
@@ -397,20 +433,22 @@ function fromNative(focus: string, tx: RpcTx, price: number): ActivityEvent {
   const to = tx.to ?? "";
   const direction = from.toLowerCase() === focus.toLowerCase() ? "out" : "in";
   const wei = BigInt(tx.value ?? "0");
+    const network = activeNetwork();
   const amount = formatWei(wei);
   const usd = Number(amount) * price;
   const known = partyFor(direction === "out" ? to : from);
   const type: ActivityType = wei === BigInt(0) ? "contract" : known?.kind === "protocol" ? "defi" : "transfer";
+  const symbol = network.nativeSymbol;
   const summary =
     type === "contract"
       ? "Called a contract"
       : direction === "out"
-        ? `Sent ${formatAmount(amount)} ETH`
-        : `Received ${formatAmount(amount)} ETH`;
+        ? `Sent ${formatAmount(amount)} ${symbol}`
+        : `Received ${formatAmount(amount)} ${symbol}`;
   return baseEvent(focus, tx, {
     type,
     direction,
-    asset: "ETH",
+    asset: symbol,
     amount,
     amountUsd: Math.round(usd),
     from,
@@ -553,26 +591,35 @@ function tokenAmount(row: RpcTx) {
 function usdValue(symbol: string, amount: string, price: number) {
   const value = Number(amount);
   if (!Number.isFinite(value)) return 0;
-  if (STABLES.has(symbol.toUpperCase())) return value;
-  if (symbol.toUpperCase() === "ETH" || symbol.toUpperCase() === "WETH") return value * price;
+  const upper = symbol.toUpperCase();
+  if (STABLES.has(upper)) return value;
+  const network = activeNetwork();
+  if (upper === network.nativeSymbol || upper === network.wrappedSymbol) return value * price;
   return 0;
 }
 
+const priceCache = new Map<string, { at: number; price: number }>();
+
 async function ethPrice() {
-  const override = Number(process.env.ETH_USD);
+  const network = activeNetwork();
+  const cached = priceCache.get(network.priceId);
+  if (cached && Date.now() - cached.at < 60_000) return cached.price;
+  const override = network.nativeSymbol === "ETH" ? Number(process.env.ETH_USD) : Number.NaN;
   if (Number.isFinite(override) && override > 0) return override;
+  let price = network.fallbackPrice;
   try {
-    const response = await fetch("https://coins.llama.fi/prices/current/coingecko:ethereum", {
+    const response = await fetch(`https://coins.llama.fi/prices/current/${network.priceId}`, {
       signal: AbortSignal.timeout(3000),
       cache: "no-store",
     });
     const json = (await response.json()) as { coins?: Record<string, { price?: number }> };
-    const price = json.coins?.["coingecko:ethereum"]?.price;
-    if (typeof price === "number" && price > 0) return price;
+    const live = json.coins?.[network.priceId]?.price;
+    if (typeof live === "number" && live > 0) price = live;
   } catch {
-    return ETH_USD;
+    price = network.fallbackPrice;
   }
-  return ETH_USD;
+  priceCache.set(network.priceId, { at: Date.now(), price });
+  return price;
 }
 
 function formatWei(wei: bigint) {
@@ -580,12 +627,15 @@ function formatWei(wei: bigint) {
 }
 
 function formatUnits(value: bigint, decimals: number) {
-  const base = BigInt(10) ** BigInt(decimals);
+  const base = decimals > 0 ? BigInt(10) ** BigInt(decimals) : BigInt(1);
   const whole = value / base;
   const fraction = value % base;
-  if (fraction === BigInt(0)) return whole.toString();
-  const digits = fraction.toString().padStart(decimals, "0").slice(0, 4).replace(/0+$/, "");
-  return digits ? `${whole.toString()}.${digits}` : whole.toString();
+  if (fraction === BigInt(0) || decimals === 0) return whole.toString();
+  const padded = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  const head = padded.slice(0, 4);
+  if (/[1-9]/.test(head)) return `${whole.toString()}.${head.replace(/0+$/, "")}`;
+  const start = padded.search(/[1-9]/);
+  return `${whole.toString()}.${padded.slice(0, start + 2)}`;
 }
 
 function gasToEth(gasUsed?: string, gasPrice?: string) {

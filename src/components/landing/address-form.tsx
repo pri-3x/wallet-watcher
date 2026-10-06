@@ -3,12 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { isAddress, isEnsName, isTxHash } from "@/lib/address";
+import { addressOk, findChain, tokenHref, walletHref } from "@/lib/chains/catalog";
+import { ChainPicker } from "@/components/wallet/chain-picker";
 
-export function AddressForm({ id = "watch" }: { id?: string }) {
+export function AddressForm({ id = "watch", defaultChain }: { id?: string; defaultChain: string }) {
   const router = useRouter();
+  const [chain, setChain] = useState(defaultChain);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const selected = findChain(chain) ?? findChain(defaultChain);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -17,11 +21,24 @@ export function AddressForm({ id = "watch" }: { id?: string }) {
       setError("Paste a wallet address to begin.");
       return;
     }
-    if (isAddress(query) || isEnsName(query)) {
-      router.push(`/wallet/${query}`);
+    if (!selected) {
+      setError("That chain isn't available.");
       return;
     }
-    if (isTxHash(query)) {
+    if (addressOk(selected.id, query) || (selected.ens && isEnsName(query))) {
+      if (selected.family === "evm" && isAddress(query)) {
+        setPending(true);
+        const identified = await fetch(`/api/tokens/identify?chain=${selected.id}&address=${encodeURIComponent(query)}`)
+          .then((response) => response.json() as Promise<{ token?: boolean }>)
+          .catch(() => null);
+        setPending(false);
+        router.push(identified?.token ? tokenHref(query, selected.id) : walletHref(query, selected.id));
+        return;
+      }
+      router.push(walletHref(query, selected.id));
+      return;
+    }
+    if (selected.family === "evm" && isTxHash(query)) {
       setPending(true);
       const response = await fetch(`/api/search?q=${query}`);
       const json = (await response.json()) as { results?: Array<{ kind: string; href: string }> };
@@ -34,11 +51,16 @@ export function AddressForm({ id = "watch" }: { id?: string }) {
       router.push(hit.href);
       return;
     }
-    setError("That doesn't look like an Ethereum address.");
+    setError(
+      selected.family === "solana"
+        ? "That doesn't look like a Solana address."
+        : `That doesn't look like a ${selected.name} address.`,
+    );
   }
 
   return (
     <form id={id} onSubmit={onSubmit} className="w-full max-w-xl">
+      <ChainPicker value={selected?.id ?? chain} onChange={setChain} />
       <div className="flex border border-line">
         <input
           value={value}
@@ -46,7 +68,13 @@ export function AddressForm({ id = "watch" }: { id?: string }) {
             setValue(event.target.value);
             setError(null);
           }}
-          placeholder="Paste wallet address or ENS"
+          placeholder={
+            selected?.family === "solana"
+              ? "Paste a Solana address"
+              : selected?.ens
+                ? "Paste a wallet, token, or ENS"
+                : "Paste a wallet or token"
+          }
           spellCheck={false}
           autoCapitalize="none"
           className="min-w-0 flex-1 bg-transparent px-4 py-3 font-mono text-sm outline-none"

@@ -10,11 +10,13 @@ export function TransactionDrawer({
   event,
   demo,
   explorer,
+  nativeSymbol = "ETH",
   onClose,
 }: {
   event: ActivityEvent | null;
   demo: boolean;
   explorer: string;
+  nativeSymbol?: string;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -67,7 +69,7 @@ export function TransactionDrawer({
               <Row label="To" value={event.to.label} mono={event.to.address} />
               <Row label="Type" value={labelFor(event.type)} />
               <Row label="Block" value={event.blockNumber.toLocaleString("en-US")} />
-              <Row label="Gas" value={`${event.gasEth} ETH`} />
+              <Row label="Fee" value={`${event.gasEth} ${nativeSymbol}`} />
               <Row label="Timestamp" value={formatTimestamp(event.timestamp)} />
             </dl>
 

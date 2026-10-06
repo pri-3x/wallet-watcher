@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import type { AlertRule } from "@/lib/alerts/engine";
 import { DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
+import { defaultChainId, findChain } from "@/lib/chains/catalog";
 import { isPlanId, type PlanId } from "@/lib/plans";
 import type { ActivityEvent } from "@/lib/types";
 import {
@@ -23,6 +24,7 @@ type WatchRow = {
   id: string;
   userId: string;
   address: string;
+  chain?: string;
   createdAt: number;
   cursor: number;
   cooldownMs?: number;
@@ -110,6 +112,7 @@ function assemble(db: DatabaseFile, watch: WatchRow): WatchRecord {
     id: watch.id,
     userId: watch.userId,
     address: watch.address,
+    chain: watch.chain ?? defaultChainId(),
     createdAt: watch.createdAt,
     cursor: watch.cursor,
     cooldownMs: watch.cooldownMs ?? DEFAULT_COOLDOWN_MS,
@@ -130,6 +133,7 @@ function toStoredAlert(db: DatabaseFile, event: AlertEventRow): StoredAlert | nu
     watchId: watch.id,
     userId: watch.userId,
     address: watch.address,
+    chain: watch.chain ?? defaultChainId(),
     ruleType: alert.eventType,
     summary: event.summary,
     detail: event.detail,
@@ -226,16 +230,22 @@ export const memoryStore: AppStore = {
     return mutate((db) => db.watches.map((watch) => assemble(db, watch)));
   },
 
-  createWatch({ userId, address, rules, channels, cooldownMs }) {
+  createWatch({ userId, address, chain, rules, channels, cooldownMs }) {
     return mutate((db) => {
-      const duplicate = db.watches.find(
-        (watch) => watch.userId === userId && watch.address.toLowerCase() === address.toLowerCase(),
-      );
-      if (duplicate) throw new StoreError("You are already watching this wallet.");
+      const known = findChain(chain ?? defaultChainId());
+      if (!known) throw new StoreError("That chain isn't available.");
+      const duplicate = db.watches.find((watch) => {
+        const sameChain = (watch.chain ?? defaultChainId()) === known.id;
+        const sameAddress =
+          known.family === "solana" ? watch.address === address : watch.address.toLowerCase() === address.toLowerCase();
+        return watch.userId === userId && sameChain && sameAddress;
+      });
+      if (duplicate) throw new StoreError(`You are already watching this wallet on ${known.name}.`);
       const watch: WatchRow = {
         id: crypto.randomUUID(),
         userId,
         address,
+        chain: known.id,
         createdAt: Date.now(),
         cursor: 0,
         cooldownMs: cooldownMs ?? DEFAULT_COOLDOWN_MS,

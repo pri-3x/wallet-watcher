@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { shortAddress } from "@/lib/address";
+import { walletHref } from "@/lib/chains/catalog";
 import type { StoredAlert } from "@/lib/store/types";
 import { RelativeTime } from "@/components/ui/figures";
 
@@ -23,7 +24,7 @@ export function AlertTimeline({ alerts, now }: { alerts: StoredAlert[]; now: num
           <div>
             <p className="text-sm text-brass">{alert.summary}</p>
             <p className="mt-1 text-lg tracking-tight">{alert.detail}</p>
-            <Link href={`/wallet/${alert.address}?tx=${alert.hash}`} className="mt-2 inline-block font-mono text-xs text-faint hover:text-ink">
+            <Link href={walletHref(alert.address, alert.chain, { tx: alert.hash })} className="mt-2 inline-block font-mono text-xs text-faint hover:text-ink">
               {shortAddress(alert.address)}
             </Link>
           </div>

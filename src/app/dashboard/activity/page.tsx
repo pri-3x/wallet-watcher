@@ -3,6 +3,7 @@ import { SignInPanel } from "@/components/dashboard/sign-in";
 import { RelativeTime } from "@/components/ui/figures";
 import { EmptyState } from "@/components/ui/states";
 import { shortAddress } from "@/lib/address";
+import { walletHref } from "@/lib/chains/catalog";
 import { loadDesk } from "@/lib/dashboard";
 import { formatUsd } from "@/lib/format";
 
@@ -11,7 +12,7 @@ export default async function ActivityPage() {
   if (!desk.user) return <SignInPanel />;
 
   const events = desk.wallets
-    .flatMap(({ view }) => view.events.map((event) => ({ event, address: view.address })))
+    .flatMap(({ view }) => view.events.map((event) => ({ event, address: view.address, chain: view.chain })))
     .sort((a, b) => b.event.timestamp - a.event.timestamp)
     .slice(0, 30);
 
@@ -24,9 +25,9 @@ export default async function ActivityPage() {
         </div>
       ) : (
         <ol className="mt-10 border-t border-line">
-          {events.map(({ event, address }) => (
-            <li key={`${address}-${event.id}`} className="border-b border-line">
-              <Link href={`/wallet/${address}?tx=${event.hash}`} className="grid gap-2 py-5 md:grid-cols-[140px_1fr_auto]">
+          {events.map(({ event, address, chain }) => (
+            <li key={`${chain}-${address}-${event.id}`} className="border-b border-line">
+              <Link href={walletHref(address, chain, { tx: event.hash })} className="grid gap-2 py-5 md:grid-cols-[140px_1fr_auto]">
                 <span className="text-sm text-muted">
                   <RelativeTime timestamp={event.timestamp} now={desk.now} />
                 </span>

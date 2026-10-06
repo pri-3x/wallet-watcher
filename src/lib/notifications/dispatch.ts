@@ -1,5 +1,6 @@
 import { shortAddress } from "@/lib/address";
 import { emailHtml, emailSubject, emailText, parseSignal } from "@/lib/notifications/email";
+import { chatIdFor, recentTelegramChats } from "@/lib/notifications/telegram";
 import { getStore } from "@/lib/store";
 import type { ChannelType, StoredNotification } from "@/lib/store/types";
 
@@ -36,7 +37,9 @@ export function providerStates(): ProviderState[] {
       channel: "telegram",
       label: "Telegram",
       ready: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-      note: process.env.TELEGRAM_BOT_TOKEN ? "Bot token set." : "Set TELEGRAM_BOT_TOKEN to send messages.",
+      note: process.env.TELEGRAM_BOT_TOKEN
+        ? "Bot token set. Message the bot, then send a test from here."
+        : "Create a bot with @BotFather and set TELEGRAM_BOT_TOKEN.",
     },
     { channel: "discord", label: "Discord", ready: true, note: "Posts to a channel webhook URL." },
     { channel: "webhook", label: "Webhook", ready: true, note: "POSTs JSON to any https URL." },
@@ -95,19 +98,20 @@ export async function deliver(note: Pick<StoredNotification, "channel" | "target
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await explainFailure("email", await response.text()));
     return;
   }
 
   if (note.channel === "telegram") {
     if (!process.env.TELEGRAM_BOT_TOKEN) throw new Error("UNCONFIGURED");
+    const chatId = await resolveTelegramChat(note.target);
     const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: note.target, text, disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await explainFailure("telegram", await response.text()));
     return;
   }
 
@@ -140,6 +144,34 @@ export function notificationText(address: string, detail: string, link?: string)
  * delivers to the account owner's own address. Set EMAIL_FROM to an address on
  * a verified domain to email anyone.
  */
+async function resolveTelegramChat(target: string) {
+  const chats = await recentTelegramChats();
+  const chatId = chatIdFor(target, chats);
+  if (chatId) return chatId;
+  throw new Error("Message the bot once from that account, then use Find chats. A username isn't a chat until the bot has seen it.");
+}
+
+/** Turns a provider's JSON into a sentence. The raw body is not shown. */
+export async function explainFailure(channel: "email" | "telegram", raw: string) {
+  let description = raw;
+  try {
+    const json = JSON.parse(raw) as { message?: string; description?: string };
+    description = json.message || json.description || raw;
+  } catch {
+    description = raw;
+  }
+  if (channel === "email" && /only send testing emails/i.test(description)) {
+    const allowed = description.match(/\(([^)]+@[^)]+)\)/)?.[1];
+    return allowed
+      ? `Resend's test sender can only email ${allowed}. Verify a domain to reach anyone else.`
+      : "Resend's test sender can only email the address on your Resend account.";
+  }
+  if (channel === "telegram" && /chat not found/i.test(description)) {
+    return "Message the bot once from that account, then use Find chats. A username isn't a chat until the bot has seen it.";
+  }
+  return description.slice(0, 300);
+}
+
 function fromAddress() {
   return process.env.EMAIL_FROM || "Wallet Watch <onboarding@resend.dev>";
 }

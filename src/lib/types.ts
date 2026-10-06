@@ -15,6 +15,8 @@ export type Party = {
 export type ActivityEvent = {
   id: string;
   hash: string;
+  /** Chain id this event was read from. Absent on older stored rows. */
+  chain?: string;
   timestamp: number;
   type: ActivityType;
   direction: Direction;
@@ -40,9 +42,10 @@ export type Holding = {
 
 export type WalletView = {
   address: string;
-  chain: "ethereum";
+  chain: string;
   chainLabel: string;
   explorer: string;
+  nativeSymbol: string;
   ensName?: string | null;
   source: "demo" | "live";
   balanceUsd: number;

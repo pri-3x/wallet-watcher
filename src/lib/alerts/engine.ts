@@ -1,3 +1,4 @@
+import { isNativeAsset } from "@/lib/chains/catalog";
 import { formatUsd } from "@/lib/format";
 import type { ActivityEvent } from "@/lib/types";
 
@@ -67,7 +68,7 @@ function matches(rule: AlertRule, event: ActivityEvent, isNewContract: boolean) 
       return true;
     }
     case "ETH":
-      return event.asset === "ETH" || event.asset === "WETH" || event.counterAsset === "ETH";
+      return isNativeAsset(event.asset) || isNativeAsset(event.counterAsset ?? "");
     case "STABLECOIN":
       return STABLES.has(event.asset.toUpperCase()) || STABLES.has((event.counterAsset ?? "").toUpperCase());
     case "DEX":

@@ -21,8 +21,12 @@ export function formatUsdCompact(value: number) {
 export function formatAmount(amount: string | number) {
   const value = typeof amount === "number" ? amount : Number(amount);
   if (!Number.isFinite(value)) return String(amount);
-  if (Math.abs(value) >= 1000) {
+  const abs = Math.abs(value);
+  if (abs >= 1000) {
     return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+  }
+  if (abs > 0 && abs < 0.01) {
+    return new Intl.NumberFormat("en-US", { maximumSignificantDigits: 2 }).format(value);
   }
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
 }

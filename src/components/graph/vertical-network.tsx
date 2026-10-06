@@ -1,14 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { walletHref } from "@/lib/chains/catalog";
 import type { GraphEdge, GraphModel, GraphNode } from "@/lib/graph/layout";
 
 export function VerticalNetwork({
   model,
   onOpenEdge,
+  chain,
 }: {
   model: GraphModel;
   onOpenEdge?: (edge: GraphEdge) => void;
+  chain?: string;
 }) {
   const router = useRouter();
   const nodes = new Map(model.nodes.map((node) => [node.id, node]));
@@ -20,15 +23,15 @@ export function VerticalNetwork({
     <div className="mx-auto max-w-md py-2">
       {incoming.map((edge) => (
         <div key={edge.id}>
-          <FlowNode node={nodes.get(edge.source)} onOpen={() => open(router, nodes.get(edge.source))} />
+          <FlowNode node={nodes.get(edge.source)} onOpen={() => open(router, nodes.get(edge.source), chain)} />
           <Rail edge={edge} onOpen={() => onOpenEdge?.(edge)} />
         </div>
       ))}
-      {focus ? <FlowNode node={focus} emphasis onOpen={() => open(router, focus)} /> : null}
+      {focus ? <FlowNode node={focus} emphasis onOpen={() => open(router, focus, chain)} /> : null}
       {outgoing.map((edge) => (
         <div key={edge.id}>
           <Rail edge={edge} onOpen={() => onOpenEdge?.(edge)} />
-          <FlowNode node={nodes.get(edge.target)} onOpen={() => open(router, nodes.get(edge.target))} />
+          <FlowNode node={nodes.get(edge.target)} onOpen={() => open(router, nodes.get(edge.target), chain)} />
         </div>
       ))}
     </div>
@@ -73,7 +76,7 @@ function Rail({ edge, onOpen }: { edge: GraphEdge; onOpen: () => void }) {
   );
 }
 
-function open(router: ReturnType<typeof useRouter>, node?: GraphNode) {
+function open(router: ReturnType<typeof useRouter>, node?: GraphNode, chain?: string) {
   if (!node?.address || node.kind === "cluster") return;
-  router.push(`/wallet/${node.address}`);
+  router.push(chain ? walletHref(node.address, chain) : `/wallet/${node.address}`);
 }

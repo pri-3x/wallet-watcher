@@ -48,6 +48,7 @@ export type WatchRecord = {
   id: string;
   userId: string;
   address: string;
+  chain: string;
   createdAt: number;
   cursor: number;
   /** 0 sends every match. Otherwise the watch stays quiet for this long after a send. */
@@ -63,6 +64,7 @@ export type StoredAlert = {
   watchId: string;
   userId: string;
   address: string;
+  chain: string;
   ruleType: RuleType;
   summary: string;
   detail: string;
@@ -121,6 +123,7 @@ export interface AppStore {
   createWatch(input: {
     userId: string;
     address: string;
+    chain?: string;
     rules: RuleInput[];
     channels: ChannelInput[];
     cooldownMs?: number;

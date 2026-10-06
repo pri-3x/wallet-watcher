@@ -5,7 +5,7 @@ import type { ChannelType } from "@/lib/store/types";
 
 const PLACEHOLDER: Record<ChannelType, string> = {
   email: "you@domain.com",
-  telegram: "Chat ID",
+  telegram: "@you, after you message the bot",
   discord: "https://discord.com/api/webhooks/…",
   webhook: "https://",
 };
@@ -15,11 +15,32 @@ export function DeliveryTest({ channels, defaultEmail }: { channels: ChannelType
   const [target, setTarget] = useState(channel === "email" ? defaultEmail : "");
   const [state, setState] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
+  const [chats, setChats] = useState<Array<{ id: string; label: string }>>([]);
 
   function pick(next: ChannelType) {
     setChannel(next);
     setTarget(next === "email" ? defaultEmail : "");
+    setChats([]);
     setState(null);
+  }
+
+  async function findChats() {
+    setPending(true);
+    setState(null);
+    const response = await fetch("/api/notifications/telegram");
+    const json = (await response.json()) as {
+      chats?: Array<{ id: string; label: string }>;
+      error?: { title?: string };
+    };
+    setPending(false);
+    if (!response.ok) {
+      setState({ tone: "error", text: json.error?.title ?? "Telegram didn't answer." });
+      return;
+    }
+    setChats(json.chats ?? []);
+    if ((json.chats ?? []).length === 0) {
+      setState({ tone: "error", text: "No chats yet. Message the bot, then look again." });
+    }
   }
 
   async function send(event: React.FormEvent) {
@@ -69,6 +90,23 @@ export function DeliveryTest({ channels, defaultEmail }: { channels: ChannelType
           {pending ? "Sending…" : "Send a test"}
         </button>
       </div>
+      {channel === "telegram" ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => void findChats()} disabled={pending} className="text-sm text-muted hover:text-ink">
+            Find chats
+          </button>
+          {chats.map((chat) => (
+            <button
+              key={chat.id}
+              type="button"
+              onClick={() => setTarget(chat.id)}
+              className={target === chat.id ? "text-sm text-ink" : "text-sm text-faint hover:text-ink"}
+            >
+              {chat.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {state ? (
         <p className={`mt-3 text-sm ${state.tone === "ok" ? "text-inflow" : "text-outflow"}`}>{state.text}</p>
       ) : null}

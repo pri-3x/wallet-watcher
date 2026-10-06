@@ -69,6 +69,14 @@ test("a contract is new only the first time it appears", () => {
   assert.equal(matches.filter((match) => match.event.hash === "0x2" && match.rule.eventType === "NEW_CONTRACT").length, 0);
 });
 
+test("POL matches the native-asset rule", () => {
+  const matches = evaluateAlerts(
+    [{ id: "eth", eventType: "ETH", enabled: true }],
+    [event({ hash: "0xpol", type: "transfer", asset: "POL", amountUsd: 2 })],
+  );
+  assert.equal(matches[0]?.rule.eventType, "ETH");
+});
+
 test("disabled rules are ignored", () => {
   const matches = evaluateAlerts(
     [{ id: "any", eventType: "ANY", enabled: false }],

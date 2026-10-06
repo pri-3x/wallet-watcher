@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { shortAddress } from "@/lib/address";
+import { addressUrl } from "@/lib/chains/catalog";
 import type { WalletView } from "@/lib/types";
 
 export function WalletHeader({
@@ -38,7 +39,7 @@ export function WalletHeader({
           {copied ? "Copied" : "Copy"}
         </button>
         <a
-          href={`${view.explorer}/address/${view.address}`}
+          href={addressUrl(view.chain, view.address)}
           target="_blank"
           rel="noreferrer"
           className="inline-flex h-10 items-center border border-line px-4 text-sm"

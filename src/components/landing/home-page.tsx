@@ -3,6 +3,7 @@ import { ActivityGraph } from "@/components/graph/activity-graph";
 import { AddressForm } from "@/components/landing/address-form";
 import { ActivityClock } from "@/components/wallet/activity-clock";
 import { heroModel, storyModel } from "@/lib/graph/hero";
+import { defaultChainId, walletHref } from "@/lib/chains/catalog";
 import { DEMO_ADDRESS } from "@/lib/parties";
 import { SAMPLE_HOURS } from "@/lib/behavior";
 
@@ -18,9 +19,9 @@ export function HomePage() {
           Track wallets. Understand activity. Get alerted when something matters.
         </p>
         <div className="mt-10">
-          <AddressForm />
+          <AddressForm defaultChain={defaultChainId()} />
         </div>
-        <Link href={`/wallet/${DEMO_ADDRESS}`} className="mt-5 inline-block text-sm text-muted hover:text-ink">
+        <Link href={walletHref(DEMO_ADDRESS, "ethereum")} className="mt-5 inline-block text-sm text-muted hover:text-ink">
           Explore demo
         </Link>
       </section>
@@ -100,7 +101,7 @@ export function HomePage() {
             ))}
           </div>
           <div className="mt-16">
-            <AddressForm id="watch-again" />
+            <AddressForm id="watch-again" defaultChain={defaultChainId()} />
           </div>
         </div>
       </section>

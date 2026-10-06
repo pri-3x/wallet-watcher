@@ -23,7 +23,8 @@ export default async function WalletPage({
 }) {
   const { address } = await params;
   const query = await searchParams;
-  const { view, now } = await openWallet(address);
+  const chain = typeof query.chain === "string" ? query.chain : undefined;
+  const { view, now } = await openWallet(address, chain);
   const filter = typeof query.filter === "string" ? query.filter : undefined;
   const asset = typeof query.asset === "string" ? query.asset : undefined;
   const tx = typeof query.tx === "string" ? query.tx : undefined;

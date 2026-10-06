@@ -7,7 +7,6 @@ try {
 
 import { randomUUID } from "node:crypto";
 import Redis from "ioredis";
-import { activeNetwork } from "@/lib/chains/ethereum";
 import { indexWatches } from "@/lib/indexer";
 import {
   LOCK_REFRESH_MS,
@@ -61,10 +60,9 @@ async function dropRedis() {
 }
 
 async function loop() {
-  const network = activeNetwork();
   const locking = Boolean(process.env.REDIS_URL);
   console.log(
-    `Wallet Watch worker · ${network.label} · every ${INTERVAL_MS / 1000}s · ${locking ? "lock on" : "lock off"}`,
+    `Wallet Watch worker · every chain · every ${INTERVAL_MS / 1000}s · ${locking ? "lock on" : "lock off"}`,
   );
   if (!locking) {
     console.warn("REDIS_URL is unset. A second worker would send the same alerts.");

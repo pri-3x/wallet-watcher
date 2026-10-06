@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { walletHref } from "@/lib/chains/catalog";
 import {
   cubicPoint,
   curvePath,
@@ -17,18 +18,20 @@ export function ActivityGraph({
   model,
   onOpenEdge,
   interactive = true,
+  chain,
 }: {
   model: GraphModel;
   onOpenEdge?: (edge: GraphEdge) => void;
   interactive?: boolean;
+  chain?: string;
 }) {
   return (
     <div className="relative h-full">
       <div className="hidden h-full md:block">
-        <DesktopGraph model={model} onOpenEdge={onOpenEdge} interactive={interactive} />
+        <DesktopGraph model={model} onOpenEdge={onOpenEdge} interactive={interactive} chain={chain} />
       </div>
       <div className="md:hidden">
-        <VerticalNetwork model={model} onOpenEdge={onOpenEdge} />
+        <VerticalNetwork model={model} onOpenEdge={onOpenEdge} chain={chain} />
       </div>
     </div>
   );
@@ -38,10 +41,12 @@ function DesktopGraph({
   model,
   onOpenEdge,
   interactive,
+  chain,
 }: {
   model: GraphModel;
   onOpenEdge?: (edge: GraphEdge) => void;
   interactive: boolean;
+  chain?: string;
 }) {
   const router = useRouter();
   const markerId = useId().replace(/:/g, "");
@@ -253,7 +258,7 @@ function DesktopGraph({
               onHover={setHoverNode}
               onOpen={() => {
                 if (!node.address || node.kind === "cluster") return;
-                router.push(`/wallet/${node.address}`);
+                router.push(chain ? walletHref(node.address, chain) : `/wallet/${node.address}`);
               }}
             />
           ))}

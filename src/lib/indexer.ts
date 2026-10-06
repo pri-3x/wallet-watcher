@@ -1,4 +1,4 @@
-import { activeNetwork } from "@/lib/chains/ethereum";
+import { txUrl } from "@/lib/chains/catalog";
 import { notificationText, dispatchPending } from "@/lib/notifications/dispatch";
 import { evaluateAlerts } from "@/lib/alerts/engine";
 import { planDeliveries } from "@/lib/alerts/quiet";
@@ -33,7 +33,6 @@ export async function indexWatches(
   const watches = await store.listAllWatches();
   const selected = options.userId ? watches.filter((watch) => watch.userId === options.userId) : watches;
   const now = Date.now();
-  const explorer = activeNetwork().explorer;
   const report: IndexReport = { watches: selected.length, skipped: 0, recorded: 0, queued: 0 };
 
   for (const watch of selected) {
@@ -42,7 +41,7 @@ export async function indexWatches(
       break;
     }
 
-    const view = await loadWalletView(watch.address, now);
+    const view = await loadWalletView(watch.address, now, watch.chain);
     if (view.error) {
       report.skipped += 1;
       console.warn(`[indexer] ${watch.address}: ${view.error.title} ${view.error.technical ?? ""}`.trim());
@@ -78,7 +77,7 @@ export async function indexWatches(
         alertEventId: event.id,
         channel: channel.type,
         target: channel.target,
-        payload: notificationText(watch.address, event.detail, `${explorer}/tx/${event.hash}`),
+        payload: notificationText(watch.address, event.detail, txUrl(watch.chain, event.hash)),
         status: event.status,
         error: event.error,
       })),
@@ -88,7 +87,9 @@ export async function indexWatches(
     if (planned.notified) await store.markNotified(watch.id, planned.lastNotifiedAt);
 
     await store.updateCursor(watch.id, now);
-    if (view.events.length > 0) await store.upsertActivity(view.events);
+    if (view.events.length > 0) {
+      await store.upsertActivity(view.events.map((event) => ({ ...event, chain: view.chain })));
+    }
   }
 
   if (options.notify) {

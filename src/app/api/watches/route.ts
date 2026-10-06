@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isAddress } from "@/lib/address";
+import { addressOk, defaultChainId, findChain } from "@/lib/chains/catalog";
 import { COOLDOWN_15_MIN, COOLDOWN_1_HOUR, COOLDOWN_IMMEDIATE, DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { getSessionUser } from "@/lib/auth/session";
 import { indexWatches } from "@/lib/indexer";
@@ -15,6 +15,7 @@ const cooldownSchema = z.union([
 
 const schema = z.object({
   address: z.string(),
+  chain: z.string().optional(),
   rules: z
     .array(
       z.object({
@@ -52,9 +53,11 @@ export async function POST(request: Request) {
     );
   }
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || !isAddress(parsed.data?.address ?? "")) {
+  const chain = findChain(parsed.success ? (parsed.data.chain ?? defaultChainId()) : "");
+  if (!parsed.success || !chain || !addressOk(chain.id, parsed.data.address)) {
     return Response.json({ error: { title: "That address doesn't look right." } }, { status: 400 });
   }
+  const address = chain.family === "evm" ? canonicalAddress(parsed.data.address) : parsed.data.address.trim();
 
   const store = await getStore();
   const existing = await store.listWatches(user.id);
@@ -74,7 +77,8 @@ export async function POST(request: Request) {
   try {
     const watch = await store.createWatch({
       userId: user.id,
-      address: canonicalAddress(parsed.data.address),
+      address,
+      chain: chain.id,
       rules: parsed.data.rules,
       channels: parsed.data.channels,
       cooldownMs: parsed.data.cooldownMs ?? DEFAULT_COOLDOWN_MS,

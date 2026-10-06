@@ -1,4 +1,5 @@
-import { isAddress, isEnsName, isTxHash, shortAddress } from "@/lib/address";
+import { isAddress, isEnsName, isSolanaAddress, isTxHash, shortAddress } from "@/lib/address";
+import { CHAINS, defaultChainId, walletHref } from "@/lib/chains/catalog";
 import { getStore } from "@/lib/store";
 import { loadWalletView } from "@/lib/wallet-service";
 import { DEMO_ADDRESS, DEMO_ENS, ENS_BOOK, KNOWN_PROTOCOLS, PARTIES } from "@/lib/parties";
@@ -7,12 +8,18 @@ import type { SearchHit } from "@/lib/types";
 const TOKENS = ["ETH", "WETH", "USDC", "USDT", "DAI"];
 
 export async function searchAll(query: string, now: number): Promise<SearchHit[]> {
-  const q = query.trim().toLowerCase();
+  const raw = query.trim();
+  const q = raw.toLowerCase();
   if (!q) return [];
   const hits: SearchHit[] = [];
 
-  if (isAddress(q)) {
-    hits.push(walletHit(q, "Ethereum address"));
+  if (isAddress(raw)) {
+    for (const chain of CHAINS.filter((item) => item.family === "evm")) {
+      hits.push(walletHit(raw, chain.name, chain.id));
+    }
+  }
+  if (isSolanaAddress(raw)) {
+    hits.push(walletHit(raw, "Solana", "solana"));
   }
 
   for (const [name, address] of Object.entries(ENS_BOOK)) {
@@ -21,7 +28,7 @@ export async function searchAll(query: string, now: number): Promise<SearchHit[]
         kind: "ens",
         title: name,
         subtitle: shortAddress(address),
-        href: `/wallet/${address}`,
+        href: walletHref(address, "ethereum"),
       });
     }
   }
@@ -32,7 +39,7 @@ export async function searchAll(query: string, now: number): Promise<SearchHit[]
         kind: "token",
         title: token,
         subtitle: "Token",
-        href: `/wallet/${DEMO_ADDRESS}?asset=${token}`,
+        href: walletHref(DEMO_ADDRESS, "ethereum", { asset: token }),
       });
     }
   }
@@ -44,7 +51,7 @@ export async function searchAll(query: string, now: number): Promise<SearchHit[]
         kind: "protocol",
         title: protocol.name,
         subtitle: protocol.kind,
-        href: `/wallet/${DEMO_ADDRESS}?filter=${filter}`,
+        href: walletHref(DEMO_ADDRESS, "ethereum", { filter }),
       });
     }
   }
@@ -72,7 +79,7 @@ export async function searchAll(query: string, now: number): Promise<SearchHit[]
         kind: "transaction",
         title: event.summary,
         subtitle: shortAddress(event.hash, 8, 6),
-        href: `/wallet/${wallet}?tx=${event.hash}`,
+        href: walletHref(wallet, event.chain ?? defaultChainId(), { tx: event.hash }),
       });
     }
   }
@@ -82,12 +89,12 @@ export async function searchAll(query: string, now: number): Promise<SearchHit[]
       kind: "ens",
       title: q,
       subtitle: "Resolve name",
-      href: `/wallet/${q}`,
+      href: walletHref(q, "ethereum"),
     });
   }
 
   if (hits.length === 0 && q === "vault") {
-    hits.push({ kind: "ens", title: DEMO_ENS, subtitle: shortAddress(DEMO_ADDRESS), href: `/wallet/${DEMO_ADDRESS}` });
+    hits.push({ kind: "ens", title: DEMO_ENS, subtitle: shortAddress(DEMO_ADDRESS), href: walletHref(DEMO_ADDRESS, "ethereum") });
   }
 
   const unique = new Map<string, SearchHit>();
@@ -95,11 +102,11 @@ export async function searchAll(query: string, now: number): Promise<SearchHit[]
   return [...unique.values()].slice(0, 12);
 }
 
-function walletHit(address: string, subtitle: string): SearchHit {
+function walletHit(address: string, subtitle: string, chainId = "ethereum"): SearchHit {
   return {
     kind: "wallet",
     title: shortAddress(address),
     subtitle,
-    href: `/wallet/${address}`,
+    href: walletHref(address, chainId),
   };
 }

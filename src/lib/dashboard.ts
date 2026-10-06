@@ -21,7 +21,7 @@ export async function loadDesk(): Promise<{
   const wallets = await Promise.all(
     watches.map(async (watch) => ({
       watch,
-      view: await getWalletView(watch.address, now),
+      view: await getWalletView(watch.address, now, watch.chain),
     })),
   );
   const alerts = await store.listAlertEvents(user.id);

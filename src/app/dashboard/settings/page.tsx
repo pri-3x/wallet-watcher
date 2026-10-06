@@ -1,8 +1,9 @@
 import { DeliveryTest } from "@/components/dashboard/delivery-test";
 import { SignInPanel } from "@/components/dashboard/sign-in";
 import { SignOutButton } from "@/components/dashboard/sign-out";
-import { activeNetwork } from "@/lib/chains/ethereum";
+import { CHAINS } from "@/lib/chains/catalog";
 import { providerStates } from "@/lib/notifications/dispatch";
+import { telegramIdentity } from "@/lib/notifications/telegram";
 import { PLANS } from "@/lib/plans";
 import { loadDesk } from "@/lib/dashboard";
 
@@ -11,15 +12,15 @@ export default async function SettingsPage() {
   if (!desk.user) return <SignInPanel />;
   const plan = PLANS[desk.user.plan];
   const providers = providerStates();
-  const network = activeNetwork();
-
+  const telegram = providers.find((provider) => provider.channel === "telegram");
+  const bot = telegram?.ready ? await telegramIdentity() : null;
   return (
     <div className="max-w-xl">
       <h1 className="text-5xl tracking-tight">Settings</h1>
       <dl className="mt-12 border-t border-line">
         <Row label="Email" value={desk.user.email} />
         <Row label="Plan" value={plan.name} />
-        <Row label="Network" value={network.id === "sepolia" ? "Sepolia testnet" : "Ethereum mainnet"} />
+        <Row label="Chains" value={CHAINS.map((chain) => chain.name).join(", ")} />
       </dl>
 
       <section className="mt-16">
@@ -40,6 +41,13 @@ export default async function SettingsPage() {
           channels={providers.filter((provider) => provider.ready).map((provider) => provider.channel)}
           defaultEmail={desk.user.email}
         />
+        {telegram && !telegram.ready ? (
+          <p className="mt-6 text-sm text-muted">
+            In Telegram, open @BotFather, send /newbot, and copy the token into TELEGRAM_BOT_TOKEN. Restart the app, message the bot once, then come back here.
+          </p>
+        ) : bot ? (
+          <p className="mt-6 text-sm text-muted">Message @{bot.username} once, then use Find chats before sending a test.</p>
+        ) : null}
         <p className="mt-6 text-sm text-faint">
           Channels are chosen per watch. History recorded when a watch is created is kept but never sent.
         </p>
@@ -54,9 +62,9 @@ export default async function SettingsPage() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between border-b border-line py-4">
-      <dt className="eyebrow">{label}</dt>
-      <dd>{value}</dd>
+    <div className="flex items-baseline justify-between gap-6 border-b border-line py-4">
+      <dt className="eyebrow shrink-0">{label}</dt>
+      <dd className="text-right">{value}</dd>
     </div>
   );
 }

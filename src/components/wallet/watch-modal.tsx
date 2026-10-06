@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isAddress } from "@/lib/address";
+import { addressOk, findChain } from "@/lib/chains/catalog";
 import { COOLDOWN_OPTIONS, DEFAULT_COOLDOWN_MS } from "@/lib/alerts/quiet";
 import { formatUsd } from "@/lib/format";
 import type { RuleType } from "@/lib/alerts/engine";
@@ -29,10 +29,12 @@ const CHANNELS: Array<{ id: ChannelType; label: string; placeholder: string }> =
 export function WatchWalletModal({
   open,
   address,
+  chain,
   onClose,
 }: {
   open: boolean;
   address?: string;
+  chain: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -77,8 +79,13 @@ export function WatchWalletModal({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    if (!isAddress(wallet)) {
-      setError("That doesn't look like an Ethereum address.");
+    const chainDef = findChain(chain);
+    if (!chainDef || !addressOk(chainDef.id, wallet)) {
+      setError(
+        chainDef?.family === "solana"
+          ? "That doesn't look like a Solana address."
+          : "That doesn't look like a wallet address.",
+      );
       return;
     }
     if (selected.length === 0) {
@@ -121,6 +128,7 @@ export function WatchWalletModal({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         address: wallet,
+        chain,
         rules: selected.map((eventType) => ({
           eventType,
           threshold: eventType === "TRANSFER" ? amount : undefined,
@@ -176,7 +184,10 @@ export function WatchWalletModal({
                 className="mt-6 w-full border border-line bg-transparent px-3 py-2 font-mono text-sm outline-none"
               />
             ) : (
-              <p className="mt-4 font-mono text-sm text-muted">{wallet}</p>
+              <p className="mt-4 font-mono text-sm text-muted">
+                {wallet}
+                <span className="text-faint"> · {findChain(chain)?.name}</span>
+              </p>
             )}
 
             {!signedIn ? (
@@ -216,7 +227,11 @@ export function WatchWalletModal({
                       <span className={`grid h-4 w-4 place-items-center border ${checked ? "border-ink bg-ink text-canvas" : "border-line"}`}>
                         {checked ? "✓" : ""}
                       </span>
-                      {rule.id === "TRANSFER" ? `Transfer exceeds ${formatUsd(amount || 0)}` : rule.label}
+                      {rule.id === "TRANSFER"
+                        ? `Transfer exceeds ${formatUsd(amount || 0)}`
+                        : rule.id === "ETH"
+                          ? `${findChain(chain)?.nativeSymbol ?? "ETH"} moves`
+                          : rule.label}
                     </label>
                   );
                 })}

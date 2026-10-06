@@ -126,7 +126,7 @@ export function WalletScreen({
               <EmptyState title="Nothing in this range." body="Widen the window or clear the filter to see activity." />
             </div>
           ) : (
-            <ActivityGraph model={model} onOpenEdge={(edge) => setSelected(edge.latest)} />
+            <ActivityGraph model={model} chain={view.chain} onOpenEdge={(edge) => setSelected(edge.latest)} />
           )}
         </div>
       </section>
@@ -139,9 +139,10 @@ export function WalletScreen({
         event={selected}
         demo={view.source === "demo"}
         explorer={view.explorer}
+        nativeSymbol={view.nativeSymbol}
         onClose={() => setSelected(null)}
       />
-      <WatchWalletModal open={watchOpen} address={view.address} onClose={() => setWatchOpen(false)} />
+      <WatchWalletModal open={watchOpen} address={view.address} chain={view.chain} onClose={() => setWatchOpen(false)} />
     </main>
   );
 }

@@ -35,6 +35,6 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    return Response.json({ error: { title: "The destination rejected it.", body: message.slice(0, 300) } }, { status: 502 });
+    return Response.json({ error: { title: message.slice(0, 300) } }, { status: 502 });
   }
 }

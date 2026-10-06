@@ -2,6 +2,11 @@ export function isAddress(value: string) {
   return /^0x[a-fA-F0-9]{40}$/.test(value.trim());
 }
 
+/** A Solana address is base58 and stays case-sensitive. */
+export function isSolanaAddress(value: string) {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value.trim());
+}
+
 export function isTxHash(value: string) {
   return /^0x[a-fA-F0-9]{64}$/.test(value.trim());
 }

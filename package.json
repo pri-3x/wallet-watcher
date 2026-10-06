@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/alerts/engine.test.ts src/lib/alerts/quiet.test.ts src/lib/notifications/retry.test.ts src/lib/notifications/email.test.ts src/lib/worker/lock.test.ts src/lib/auth/password.test.ts src/lib/billing/plan-from-subscription.test.ts src/lib/billing/razorpay.test.ts",
+    "test": "node --import tsx --test src/lib/alerts/engine.test.ts src/lib/alerts/quiet.test.ts src/lib/notifications/retry.test.ts src/lib/notifications/email.test.ts src/lib/notifications/telegram.test.ts src/lib/worker/lock.test.ts src/lib/auth/password.test.ts src/lib/billing/plan-from-subscription.test.ts src/lib/billing/razorpay.test.ts src/lib/chains/catalog.test.ts src/lib/chains/solana.test.ts src/lib/tokens/overview.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:import": "tsx scripts/import-file-store.ts",
