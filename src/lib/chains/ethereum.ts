@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isAddress, shortAddress } from "@/lib/address";
-import { defaultChainId, findChain, historyUrl, rpcUrl, type ChainDef } from "@/lib/chains/catalog";
+import { defaultChainId, findChain, historyUrl, historyUrls, rpcCandidates, rpcUrl, type ChainDef } from "@/lib/chains/catalog";
 import { ChainError } from "@/lib/chains/error";
 import { loadSolanaWallet } from "@/lib/chains/solana";
 import { formatAmount } from "@/lib/format";
@@ -123,7 +123,7 @@ export const ethereum: ChainAdapter = {
 
   async getTransactions(address) {
     assertAddress(address);
-    if (usesAlchemy()) return alchemyActivity(address);
+    if (await usesAlchemy()) return alchemyActivity(address);
     const [normal, tokens, nfts] = await Promise.all([
       etherscan(address, "txlist"),
       etherscan(address, "tokentx"),
@@ -214,13 +214,21 @@ async function loadEvmWallet(address: string): Promise<WalletView> {
     const countHex = network.rpc
       ? await rpc<string>("eth_getTransactionCount", [address, "latest"])
       : "0x0";
-    const events = network.history ? await ethereum.getTransactions(address) : [];
+    let events: ActivityEvent[] = [];
+    let historyNote: string | null = null;
+    if (network.history) {
+      try {
+        events = await ethereum.getTransactions(address);
+      } catch (error) {
+        historyNote = error instanceof ChainError ? error.message : "Activity is temporarily unavailable.";
+      }
+    }
     const ordered = [...events].sort((a, b) => b.timestamp - a.timestamp);
     const txCount = Number(BigInt(countHex));
     const notes = [
       network.id === "sepolia" ? "Testnet" : null,
       network.rpc ? null : "Add an RPC URL to read the live balance.",
-      network.history ? null : "Add an Etherscan API key to load transfers.",
+      network.history ? historyNote : "Add an Etherscan API key to load transfers.",
     ].filter((note): note is string => Boolean(note));
     return {
       address,
@@ -248,12 +256,46 @@ async function loadEvmWallet(address: string): Promise<WalletView> {
   }
 }
 
+const verifiedChainIds = new Map<string, number>();
+
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const network = activeNetwork();
-  const url = network.rpc;
-  if (!url) {
+  const chain = findChain(network.id);
+  const urls = chain ? rpcCandidates(chain) : network.rpc ? [network.rpc] : [];
+  if (urls.length === 0) {
     throw new ChainError(`We couldn't reach ${network.label} right now.`, "ETHEREUM_RPC_URL is not set");
   }
+  let last = "RPC request failed";
+  for (const url of urls) {
+    const reported = await endpointChainId(url);
+    // A Sepolia Alchemy URL answers successfully for Ethereum requests and returns the wrong balances.
+    if (reported !== network.numericId) {
+      last = reported === null ? `No response from ${new URL(url).host}` : `${new URL(url).host} is chain ${reported}`;
+      continue;
+    }
+    try {
+      return await postRpc<T>(url, method, params);
+    } catch (error) {
+      last = error instanceof Error ? error.message : "RPC request failed";
+    }
+  }
+  throw new ChainError(`We couldn't reach ${network.label} right now.`, last);
+}
+
+async function endpointChainId(url: string) {
+  const cached = verifiedChainIds.get(url);
+  if (cached !== undefined) return cached;
+  try {
+    const hex = await postRpc<string>(url, "eth_chainId", []);
+    const id = Number(BigInt(hex));
+    verifiedChainIds.set(url, id);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+async function postRpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -265,48 +307,59 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
     });
   } catch (error) {
     const technical = error instanceof Error ? error.message : "RPC request failed";
-    throw new ChainError(`We couldn't reach ${network.label} right now.`, technical);
+    throw new Error(technical);
   }
   const json = (await response.json()) as { result?: unknown; error?: { message?: string } };
-  if (json.error) {
-    throw new ChainError(`We couldn't reach ${network.label} right now.`, json.error.message);
-  }
+  if (json.error) throw new Error(json.error.message ?? "RPC request failed");
   return json.result as T;
 }
 
 async function etherscan(address: string, action: string): Promise<RpcTx[]> {
   const network = activeNetwork();
-  if (!network.history) return [];
-  const url = new URL(network.history);
+  const chain = findChain(network.id);
+  const urls = chain ? historyUrls(chain) : [];
+  if (urls.length === 0) return [];
+  let last = "History request failed";
+  for (const history of urls) {
+    try {
+      const rows = await etherscanAt(history, address, action, network.numericId);
+      if (rows) return rows;
+    } catch (error) {
+      last = error instanceof Error ? error.message : last;
+    }
+  }
+  throw new ChainError(`${network.label} activity is busy right now.`, last);
+}
+
+async function etherscanAt(history: string, address: string, action: string, chainId: number): Promise<RpcTx[] | null> {
+  const url = new URL(history);
   url.searchParams.set("module", "account");
   url.searchParams.set("action", action);
   url.searchParams.set("address", address);
   url.searchParams.set("page", "1");
   url.searchParams.set("offset", "40");
   url.searchParams.set("sort", "desc");
-  if (url.hostname === "api.etherscan.io") url.searchParams.set("chainid", String(network.numericId));
+  if (url.hostname === "api.etherscan.io") url.searchParams.set("chainid", String(chainId));
   if (process.env.ETHERSCAN_API_KEY) url.searchParams.set("apikey", process.env.ETHERSCAN_API_KEY);
   const response = await fetch(url, {
     headers: { "user-agent": "wallet-watch" },
     signal: AbortSignal.timeout(8000),
     cache: "no-store",
   });
-  if (!response.ok) {
-    throw new ChainError("Transaction history is busy right now.", `${response.status} from the history API`);
-  }
+  if (!response.ok) throw new Error(`${response.status} from ${url.host}`);
   const json = (await response.json()) as { status?: string; message?: string; result?: RpcTx[] | string };
   if (!Array.isArray(json.result)) {
     const technical = typeof json.result === "string" ? json.result : json.message;
-    if (technical && /rate limit/i.test(technical)) {
-      throw new ChainError(`${network.label} is busy right now.`, technical);
-    }
-    return [];
+    if (technical && /rate limit|max rate|busy/i.test(technical)) throw new Error(technical);
+    return null;
   }
   return json.result;
 }
 
-function usesAlchemy() {
-  return (activeNetwork().rpc ?? "").includes("alchemy.com");
+async function usesAlchemy() {
+  const url = activeNetwork().rpc ?? "";
+  if (!url.includes("alchemy.com")) return false;
+  return (await endpointChainId(url)) === activeNetwork().numericId;
 }
 
 type AlchemyTransfer = {

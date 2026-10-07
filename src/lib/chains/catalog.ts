@@ -14,6 +14,9 @@ export type ChainDef = {
   defaultRpc: string;
   /** Etherscan-compatible history. Unused for Solana. */
   history: string;
+  /** Tried when the primary RPC or history API fails. */
+  fallbackRpcs?: string[];
+  historyFallbacks?: string[];
   priceId: string;
   fallbackPrice: number;
   rpcEnv?: string;
@@ -31,7 +34,9 @@ export const CHAINS: ChainDef[] = [
     wrappedSymbol: "WETH",
     explorer: "https://etherscan.io",
     defaultRpc: "https://ethereum-rpc.publicnode.com",
+    fallbackRpcs: ["https://eth.drpc.org"],
     history: "https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api",
+    historyFallbacks: ["https://eth.blockscout.com/api"],
     priceId: "coingecko:ethereum",
     fallbackPrice: 3296,
     ens: true,
@@ -46,6 +51,7 @@ export const CHAINS: ChainDef[] = [
     explorer: "https://sepolia.etherscan.io",
     defaultRpc: "https://ethereum-sepolia-rpc.publicnode.com",
     history: "https://api.routescan.io/v2/network/testnet/evm/11155111/etherscan/api",
+    historyFallbacks: ["https://eth-sepolia.blockscout.com/api"],
     priceId: "coingecko:ethereum",
     fallbackPrice: 3296,
     ens: true,
@@ -143,9 +149,22 @@ export function rpcUrl(chain: ChainDef) {
 
 /** Etherscan v2 when a key is set. Otherwise a public explorer API. Solana has no EVM history API. */
 export function historyUrl(chain: ChainDef) {
-  if (chain.family !== "evm") return null;
-  if (process.env.ETHERSCAN_API_KEY?.trim()) return "https://api.etherscan.io/v2/api";
-  return chain.history || null;
+  const urls = historyUrls(chain);
+  return urls[0] ?? null;
+}
+
+export function historyUrls(chain: ChainDef) {
+  if (chain.family !== "evm") return [];
+  const urls: string[] = [];
+  if (process.env.ETHERSCAN_API_KEY?.trim()) urls.push("https://api.etherscan.io/v2/api");
+  if (chain.history) urls.push(chain.history);
+  for (const extra of chain.historyFallbacks ?? []) urls.push(extra);
+  return [...new Set(urls)];
+}
+
+/** Primary RPC, then the public default, then backups. A Sepolia Alchemy URL stays on Sepolia. */
+export function rpcCandidates(chain: ChainDef) {
+  return [...new Set([rpcUrl(chain), chain.defaultRpc, ...(chain.fallbackRpcs ?? [])].filter((url) => url.length > 0))];
 }
 
 export function addressUrl(chainId: string, address: string) {

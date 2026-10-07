@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addressOk, findChain, historyUrl, rpcUrl, walletHref } from "./catalog";
+import { addressOk, findChain, historyUrl, historyUrls, rpcCandidates, rpcUrl, walletHref } from "./catalog";
 
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 const SOL = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
@@ -35,4 +35,23 @@ test("a sepolia RPC override does not leak onto polygon", () => {
 test("history stays off solana", () => {
   assert.equal(historyUrl(findChain("solana")!), null);
   assert.match(historyUrl(findChain("polygon")!) ?? "", /polygon\.blockscout\.com/);
+});
+
+test("ethereum keeps a second history API and does not reuse a sepolia RPC", () => {
+  const urls = historyUrls(findChain("ethereum")!);
+  assert.match(urls[0] ?? "", /routescan|etherscan/);
+  assert.ok(urls.some((url) => url.includes("eth.blockscout.com")));
+  const previousNetwork = process.env.ETHEREUM_NETWORK;
+  const previousRpc = process.env.ETHEREUM_RPC_URL;
+  process.env.ETHEREUM_NETWORK = "mainnet";
+  process.env.ETHEREUM_RPC_URL = "https://eth-sepolia.g.alchemy.com/v2/test";
+  try {
+    const candidates = rpcCandidates(findChain("ethereum")!);
+    assert.equal(candidates[0], "https://eth-sepolia.g.alchemy.com/v2/test");
+    assert.ok(candidates.includes("https://ethereum-rpc.publicnode.com"));
+    assert.ok(candidates.includes("https://eth.drpc.org"));
+  } finally {
+    process.env.ETHEREUM_NETWORK = previousNetwork;
+    process.env.ETHEREUM_RPC_URL = previousRpc;
+  }
 });
